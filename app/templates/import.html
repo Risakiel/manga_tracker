@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Import Excel — Manga Tracker{% endblock %}
+{% block content %}
+
+<h2>Import du fichier Excel</h2>
+<p>Le fichier doit contenir une feuille <code>LISTS</code> avec les colonnes : Libraries, Titre Anglais, Titre Dossier Serveur, MangaUpdates.com (URL), Last Scan, Statut du Manga.</p>
+<p>L'import est non-destructif : les mangas déjà connus (par URL MangaUpdates ou dossier serveur) sont mis à jour sans écraser les données déjà synchronisées (auteur, genres, couverture...).</p>
+
+<form method="post" action="/import" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx" required>
+    <button type="submit">Importer</button>
+</form>
+
+{% if summary %}
+<article>
+    <h3>Résultat du dernier import</h3>
+    <p>{{ summary.created }} créé(s), {{ summary.updated }} mis à jour, {{ summary.skipped }} ignoré(s).</p>
+    {% if summary.errors %}
+    <ul>
+        {% for e in summary.errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+</article>
+{% endif %}
+
+{% endblock %}

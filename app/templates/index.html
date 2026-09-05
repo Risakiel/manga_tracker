@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord — Manga Tracker{% endblock %}
+{% block content %}
+
+<div class="stats-row">
+    <div class="stat-card"><strong>{{ stats.total }}</strong> suivis</div>
+    <div class="stat-card"><strong>{{ stats.ongoing }}</strong> en cours</div>
+    <div class="stat-card"><strong>{{ stats.complete }}</strong> terminés</div>
+    <div class="stat-card"><strong>{{ stats.behind }}</strong> en retard</div>
+    <div class="stat-card"><strong>{{ stats.needs_match }}</strong> à re-matcher</div>
+</div>
+
+<form id="filters" hx-get="/partials/mangas-table" hx-target="#mangas-table-wrapper" hx-trigger="change, keyup delay:300ms from:#q">
+    <div class="grid">
+        <input type="search" id="q" name="q" placeholder="Rechercher un titre..." value="{{ filters.q }}">
+        <select name="category">
+            <option value="">Toutes catégories</option>
+            <option value="manga" {{ "selected" if filters.category == "manga" }}>Manga</option>
+            <option value="pornhwa" {{ "selected" if filters.category == "pornhwa" }}>Pornhwa</option>
+        </select>
+        <select name="status">
+            <option value="">Tous statuts</option>
+            {% for s in statuses %}
+            <option value="{{ s }}" {{ "selected" if filters.status == s }}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <select name="needs_manual_match">
+            <option value="">Tous</option>
+            <option value="true" {{ "selected" if filters.needs_manual_match == "true" }}>À re-matcher seulement</option>
+        </select>
+    </div>
+    <div class="grid">
+        <button type="submit">Filtrer</button>
+        <form method="post" action="/sync-all" style="margin:0">
+            <button type="submit" class="secondary">🔄 Tout resynchroniser (MangaUpdates)</button>
+        </form>
+        <form method="post" action="/suwayomi/sync" style="margin:0">
+            <button type="submit" class="secondary">🔗 Resync Suwayomi</button>
+        </form>
+    </div>
+</form>
+
+<div id="mangas-table-wrapper">
+    {% include "_mangas_table.html" %}
+</div>
+
+{% endblock %}

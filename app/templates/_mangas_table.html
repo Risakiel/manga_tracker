@@ -1,0 +1,53 @@
+<table class="mangas">
+    <thead>
+    <tr>
+        <th></th>
+        <th>Titre</th>
+        <th>Catégorie</th>
+        <th>Statut</th>
+        <th>Chapitres (Suwayomi / MU)</th>
+        <th>Retard</th>
+        <th>Dernière sync</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody id="mangas-table-body">
+    {% for manga in mangas %}
+    <tr class="{{ 'needs-match-row' if manga.needs_manual_match else '' }}">
+        <td>
+            {% if manga.cover_url %}
+            <img class="cover-thumb" src="{{ manga.cover_url }}" alt="" loading="lazy">
+            {% endif %}
+        </td>
+        <td>
+            <a href="/manga/{{ manga.id }}">{{ manga.title_en }}</a>
+            {% if manga.needs_manual_match %}<br><small>⚠️ match manuel requis</small>{% endif %}
+        </td>
+        <td>{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}</td>
+        <td><span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span></td>
+        <td>
+            {{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}
+            /
+            {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "?" }}
+        </td>
+        <td>
+            {% if manga.chapters_behind %}
+            <span class="behind-badge">{{ manga.chapters_behind | int }}</span>
+            {% else %}
+            —
+            {% endif %}
+        </td>
+        <td>
+            <small>{{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</small>
+        </td>
+        <td>
+            <form method="post" action="/manga/{{ manga.id }}/sync" style="margin:0">
+                <button class="outline secondary" type="submit">🔄</button>
+            </form>
+        </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8">Aucun manga ne correspond à ces filtres.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>

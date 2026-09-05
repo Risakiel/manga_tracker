@@ -1,0 +1,168 @@
+"""Orchestrates the external sync sources against the Manga table.
+
+Called both by the APScheduler jobs (scheduler.py) and by the manual
+"sync now" API endpoints -- always through the functions here so there is a
+single code path (and a single place throttling/logging happens).
+"""
+
+import logging
+from datetime import datetime, timezone
+
+import httpx
+from sqlmodel import Session, select
+
+from app.models import Manga, Status, SyncLog, SyncSource, SyncStatus
+from app.services import anilist_client, mangaupdates_client, suwayomi_client
+from app.services.matching import best_match, normalize_title
+
+logger = logging.getLogger(__name__)
+
+_KEYWORD_STATUS = {
+    "hiatus": Status.hiatus,
+    "dropped": Status.dropped,
+    "cancelled": Status.cancelled,
+    "canceled": Status.cancelled,
+}
+
+
+def _derive_status(status_raw: str, completed: bool) -> Status:
+    lowered = status_raw.lower()
+    for keyword, status in _KEYWORD_STATUS.items():
+        if keyword in lowered:
+            return status
+    return Status.complete if completed else Status.ongoing
+
+
+def sync_manga_with_mangaupdates(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
+    try:
+        series, candidates = mangaupdates_client.resolve_series(
+            manga.mangaupdates_url, manga.title_en, client=client
+        )
+    except httpx.HTTPError as exc:
+        manga.sync_error = str(exc)
+        session.add(SyncLog(manga_id=manga.id, source=SyncSource.mangaupdates, status=SyncStatus.error, message=str(exc)))
+        session.add(manga)
+        session.commit()
+        return
+
+    if series is None:
+        manga.needs_manual_match = True
+        manga.match_candidates = [
+            {"series_id": c.series_id, "title": c.title, "url": c.url, "year": c.year} for c in candidates
+        ]
+        manga.sync_error = "no unambiguous MangaUpdates match; manual review needed"
+        session.add(
+            SyncLog(
+                manga_id=manga.id,
+                source=SyncSource.mangaupdates,
+                status=SyncStatus.error,
+                message=f"{len(candidates)} candidate(s) found, manual match required",
+            )
+        )
+        session.add(manga)
+        session.commit()
+        return
+
+    manga.mangaupdates_id = series.series_id
+    manga.needs_manual_match = False
+    manga.match_candidates = []
+    manga.status_raw = series.status_raw
+    manga.status = _derive_status(series.status_raw, series.completed)
+    manga.mu_latest_chapter = series.latest_chapter
+    manga.author = ", ".join(series.authors) or manga.author
+    manga.artist = ", ".join(series.artists) or manga.artist
+    manga.genres = series.genres or manga.genres
+    manga.alt_titles = series.associated_titles or manga.alt_titles
+    manga.cover_url = series.cover_url or manga.cover_url
+    manga.description = series.description or manga.description
+    manga.sync_error = None
+    manga.last_synced_at = datetime.now(timezone.utc)
+    manga.updated_at = datetime.now(timezone.utc)
+
+    session.add(manga)
+    session.add(SyncLog(manga_id=manga.id, source=SyncSource.mangaupdates, status=SyncStatus.success, message=series.title))
+    session.commit()
+
+
+def sync_all_mangaupdates(session: Session) -> int:
+    mangas = session.exec(select(Manga)).all()
+    count = 0
+    with httpx.Client(timeout=15.0) as client:
+        for manga in mangas:
+            sync_manga_with_mangaupdates(session, manga, client=client)
+            count += 1
+    return count
+
+
+def enrich_with_anilist(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
+    """Fill gaps left by MangaUpdates (cover/alt titles) -- never overrides existing values."""
+    if manga.cover_url and manga.alt_titles:
+        return
+    try:
+        media = anilist_client.search_media(manga.title_en, client=client)
+    except httpx.HTTPError as exc:
+        session.add(SyncLog(manga_id=manga.id, source=SyncSource.anilist, status=SyncStatus.error, message=str(exc)))
+        session.commit()
+        return
+
+    if media is None:
+        return
+
+    if not manga.cover_url:
+        manga.cover_url = media.cover_url
+    if not manga.alt_titles:
+        manga.alt_titles = [s for s in [media.title_romaji, media.title_native, *media.synonyms] if s]
+    manga.updated_at = datetime.now(timezone.utc)
+    session.add(manga)
+    session.add(SyncLog(manga_id=manga.id, source=SyncSource.anilist, status=SyncStatus.success, message="enriched"))
+    session.commit()
+
+
+def sync_suwayomi_library(session: Session) -> dict:
+    """Match the live Suwayomi library against tracked mangas.
+
+    Returns a summary dict; also returns the raw library + unmatched entries
+    so the caller (router) can show an "unlinked" page without persisting a
+    second copy of the Suwayomi library.
+    """
+    try:
+        library = suwayomi_client.fetch_library()
+    except suwayomi_client.SuwayomiUnavailable as exc:
+        session.add(SyncLog(manga_id=None, source=SyncSource.suwayomi, status=SyncStatus.error, message=str(exc)))
+        session.commit()
+        return {"matched": 0, "unmatched": [], "error": str(exc)}
+
+    mangas = session.exec(select(Manga)).all()
+    by_folder = {normalize_title(m.server_folder): m for m in mangas}
+    by_title = {m.id: m.title_en for m in mangas if m.id is not None}
+
+    matched = 0
+    unmatched = []
+    for entry in library:
+        manga = by_folder.get(normalize_title(entry.title))
+        if manga is None:
+            match = best_match(entry.title, by_title)
+            if match is not None:
+                manga_id, _score = match
+                manga = next((m for m in mangas if m.id == manga_id), None)
+
+        if manga is None:
+            unmatched.append(entry)
+            continue
+
+        manga.suwayomi_manga_id = entry.id
+        manga.suwayomi_chapter_count = entry.download_count
+        manga.updated_at = datetime.now(timezone.utc)
+        session.add(manga)
+        matched += 1
+
+    session.add(
+        SyncLog(
+            manga_id=None,
+            source=SyncSource.suwayomi,
+            status=SyncStatus.success,
+            message=f"matched={matched} unmatched={len(unmatched)}",
+        )
+    )
+    session.commit()
+    return {"matched": matched, "unmatched": unmatched}

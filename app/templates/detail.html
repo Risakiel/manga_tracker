@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ manga.title_en }} — Manga Tracker{% endblock %}
+{% block content %}
+
+<a href="/" data-discover="true">&larr; Retour</a>
+
+<div class="grid">
+    <div>
+        {% if manga.cover_url %}<img src="{{ manga.cover_url }}" alt="" style="max-width:200px">{% endif %}
+    </div>
+    <div>
+        <h2>{{ manga.title_en }}</h2>
+        <p>
+            <span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span>
+            &nbsp;{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}
+        </p>
+        <p><strong>Dossier serveur :</strong> {{ manga.server_folder }}</p>
+        <p><strong>Auteur :</strong> {{ manga.author or "?" }} &nbsp; <strong>Artiste :</strong> {{ manga.artist or "?" }}</p>
+        <p><strong>Genres :</strong> {{ manga.genres | join(", ") }}</p>
+        <p><strong>Titres alternatifs :</strong> {{ manga.alt_titles | join(" · ") }}</p>
+        <p><strong>Chapitres Suwayomi :</strong> {{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}
+           &nbsp; <strong>Dernier chapitre MangaUpdates :</strong> {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "?" }}
+           {% if manga.chapters_behind %}&nbsp;(<span class="behind-badge">en retard de {{ manga.chapters_behind | int }}</span>){% endif %}
+        </p>
+        <p><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir sur MangaUpdates ↗</a></p>
+        <p><small>Dernière sync : {{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</small></p>
+        {% if manga.sync_error %}<p style="color:#f87171">{{ manga.sync_error }}</p>{% endif %}
+
+        <form method="post" action="/manga/{{ manga.id }}/sync">
+            <button type="submit">🔄 Resynchroniser (MangaUpdates + AniList)</button>
+        </form>
+    </div>
+</div>
+
+{% if manga.description %}
+<article>
+    <h3>Description</h3>
+    <p>{{ manga.description }}</p>
+</article>
+{% endif %}
+
+{% if manga.needs_manual_match %}
+<article>
+    <h3>⚠️ Match manuel requis</h3>
+    <p>Aucune correspondance non-ambiguë trouvée sur MangaUpdates. Choisis la bonne série :</p>
+    <form method="post" action="/manga/{{ manga.id }}/manual-match">
+        {% for c in manga.match_candidates %}
+        <label>
+            <input type="radio" name="series_id" value="{{ c.series_id }}">
+            {{ c.title }} {% if c.year %}({{ c.year }}){% endif %} — <a href="{{ c.url }}" target="_blank" rel="noopener">voir</a>
+        </label>
+        {% endfor %}
+        <label>
+            Ou saisir directement un series_id MangaUpdates (prioritaire sur le choix ci-dessus) :
+            <input type="number" name="series_id_custom" placeholder="series_id">
+        </label>
+        <button type="submit">Valider ce match</button>
+    </form>
+</article>
+{% endif %}
+
+{% endblock %}

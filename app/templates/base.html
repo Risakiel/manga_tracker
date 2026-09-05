@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Manga Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/pico.min.css">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/alpine.min.js" defer></script>
+</head>
+<body>
+<nav class="container-fluid">
+    <ul>
+        <li><strong>📚 Manga Tracker</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/">Tableau de bord</a></li>
+        <li><a href="/import">Import Excel</a></li>
+        <li><a href="/unlinked">Non-liés Suwayomi</a></li>
+        <li><a href="/logs">Historique</a></li>
+    </ul>
+</nav>
+<main class="container-fluid">
+    {% if flash %}
+    <article class="flash">{{ flash }}</article>
+    {% endif %}
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>
