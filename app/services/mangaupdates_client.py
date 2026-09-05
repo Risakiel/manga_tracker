@@ -17,7 +17,7 @@ from app.config import settings
 
 BASE_URL = "https://api.mangaupdates.com/v1"
 _SLUG_RE = re.compile(r"/series/([0-9a-z]+)/")
-_LEADING_CHAPTER_COUNT_RE = re.compile(r"^\s*(\d+)\s*Chapters?", re.IGNORECASE)
+_CHAPTER_COUNT_RE = re.compile(r"(\d+)\s*Chapters?", re.IGNORECASE)
 
 _last_request_at = 0.0
 
@@ -77,13 +77,16 @@ def _parse_series_payload(data: dict) -> MangaUpdatesSeries:
 
     # For some series (adult-tagged ones especially) MangaUpdates leaves the
     # structured `latest_chapter`/`completed` fields at 0/false even though the
-    # free-text status ("79 Chapters (Complete)") has the real figures -- fall
-    # back to parsing that text when the structured field looks unset.
+    # free-text status has the real figures -- fall back to parsing that text
+    # when the structured field looks unset. Status text sometimes lists
+    # several editions ("Original Comic: 30 Chapters ... Tatekomi: 91
+    # Chapters ..."); take the largest count found, since that's consistently
+    # the one matching what's actually been scanlated/downloaded.
     latest_chapter = data.get("latest_chapter") or None
     if not latest_chapter:
-        match = _LEADING_CHAPTER_COUNT_RE.match(status_raw)
-        if match:
-            latest_chapter = int(match.group(1))
+        counts = [int(m) for m in _CHAPTER_COUNT_RE.findall(status_raw)]
+        if counts:
+            latest_chapter = max(counts)
 
     completed = bool(data.get("completed")) or "complete" in status_raw.lower()
 

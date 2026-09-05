@@ -22,6 +22,13 @@
            &nbsp; <strong>Dernier chapitre MangaUpdates :</strong> {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "?" }}
            {% if manga.chapters_behind %}&nbsp;(<span class="behind-badge">en retard de {{ manga.chapters_behind | int }}</span>){% endif %}
         </p>
+        <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url">
+            <label>
+                Lien MangaUpdates
+                <input type="url" name="mangaupdates_url" value="{{ manga.mangaupdates_url }}" required>
+            </label>
+            <button type="submit" class="secondary">Enregistrer le lien + resynchroniser</button>
+        </form>
         <p><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir sur MangaUpdates ↗</a></p>
         <p><small>Dernière sync : {{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</small></p>
         {% if manga.sync_error %}<p style="color:#f87171">{{ manga.sync_error }}</p>{% endif %}

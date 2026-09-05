@@ -113,6 +113,22 @@ def test_fetch_series_falls_back_to_status_text_when_structured_fields_unset():
 
 
 @respx.mock
+def test_fetch_series_takes_max_chapter_count_across_multiple_editions():
+    # Real-world case: status text lists several editions, doesn't start with
+    # a number, and the structured fields are still unset.
+    payload = dict(SAMPLE_SERIES_PAYLOAD)
+    payload["status"] = "Original Comic: 30 Chapters (Complete)  \nTatekomi: 91 Chapters (Complete)"
+    payload["latest_chapter"] = 0
+    payload["completed"] = False
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    series = fetch_series(44838842124)
+    assert series.latest_chapter == 91
+    assert series.completed is True
+
+
+@respx.mock
 def test_search_series_parses_results():
     respx.post("https://api.mangaupdates.com/v1/series/search").mock(
         return_value=httpx.Response(

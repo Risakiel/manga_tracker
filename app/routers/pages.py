@@ -121,6 +121,25 @@ def manga_sync(manga_id: int, session: Session = Depends(get_session)):
     return RedirectResponse(f"/manga/{manga_id}", status_code=303)
 
 
+@router.post("/manga/{manga_id}/mangaupdates-url")
+def manga_set_mangaupdates_url(
+    manga_id: int, mangaupdates_url: str = Form(...), session: Session = Depends(get_session)
+):
+    manga = session.get(Manga, manga_id)
+    if manga is not None and mangaupdates_url.strip():
+        manga.mangaupdates_url = mangaupdates_url.strip()
+        manga.needs_manual_match = False
+        manga.match_candidates = []
+        manga.sync_error = None
+        session.add(manga)
+        session.commit()
+        # Sync immediately off the new link so the corrected data shows up
+        # right away instead of waiting for the next scheduled/manual sync.
+        sync_manga_with_mangaupdates(session, manga)
+        enrich_with_anilist(session, manga)
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
 @router.post("/manga/{manga_id}/manual-match")
 def manga_manual_match(
     manga_id: int,
