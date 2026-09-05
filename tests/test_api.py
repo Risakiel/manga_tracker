@@ -68,6 +68,38 @@ def test_manga_detail_404(client):
     assert resp.status_code == 404
 
 
+def test_dashboard_behind_filter_shows_only_behind_manga(client):
+    with Session(engine) as session:
+        session.add_all(
+            [
+                Manga(
+                    category=Category.manga,
+                    title_en="Behind Manga",
+                    server_folder="Behind Manga",
+                    mangaupdates_url="https://www.mangaupdates.com/series/0000001/behind",
+                    status=Status.ongoing,
+                    suwayomi_chapter_count=5,
+                    mu_latest_chapter=10,
+                ),
+                Manga(
+                    category=Category.manga,
+                    title_en="Up To Date Manga",
+                    server_folder="Up To Date Manga",
+                    mangaupdates_url="https://www.mangaupdates.com/series/0000002/up-to-date",
+                    status=Status.ongoing,
+                    suwayomi_chapter_count=10,
+                    mu_latest_chapter=10,
+                ),
+            ]
+        )
+        session.commit()
+
+    resp = client.get("/?behind=true")
+    assert resp.status_code == 200
+    assert "Behind Manga" in resp.text
+    assert "Up To Date Manga" not in resp.text
+
+
 @respx.mock
 def test_editing_mangaupdates_url_resyncs_off_the_new_link(client):
     with Session(engine) as session:

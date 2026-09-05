@@ -34,7 +34,9 @@ _last_suwayomi_unmatched: dict[int, SuwayomiManga] = {}
 _mu_sync_progress = {"running": False, "total": 0, "done": 0}
 
 
-def _filtered_mangas(session: Session, category: str, status: str, q: str, needs_manual_match: str) -> list[Manga]:
+def _filtered_mangas(
+    session: Session, category: str, status: str, q: str, needs_manual_match: str, behind: str = ""
+) -> list[Manga]:
     statement = select(Manga)
     if category:
         try:
@@ -52,6 +54,9 @@ def _filtered_mangas(session: Session, category: str, status: str, q: str, needs
     if q:
         q_lower = q.lower()
         mangas = [m for m in mangas if q_lower in m.title_en.lower() or q_lower in m.server_folder.lower()]
+    if behind == "true":
+        # chapters_behind is a computed property, not a DB column -- filter in Python.
+        mangas = [m for m in mangas if (m.chapters_behind or 0) > 0]
     mangas.sort(key=lambda m: m.title_en.lower())
     return mangas
 
@@ -74,16 +79,23 @@ def dashboard(
     status: str = "",
     q: str = "",
     needs_manual_match: str = "",
+    behind: str = "",
     session: Session = Depends(get_session),
 ):
-    mangas = _filtered_mangas(session, category, status, q, needs_manual_match)
+    mangas = _filtered_mangas(session, category, status, q, needs_manual_match, behind)
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "mangas": mangas,
             "stats": _compute_stats(session),
-            "filters": {"category": category, "status": status, "q": q, "needs_manual_match": needs_manual_match},
+            "filters": {
+                "category": category,
+                "status": status,
+                "q": q,
+                "needs_manual_match": needs_manual_match,
+                "behind": behind,
+            },
             "statuses": [s.value for s in Status],
             "flash": request.query_params.get("flash"),
             "progress": _mu_sync_progress,

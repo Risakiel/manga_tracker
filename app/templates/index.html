@@ -2,12 +2,13 @@
 {% block title %}Tableau de bord — Manga Tracker{% endblock %}
 {% block content %}
 
+{% set no_filter = not (filters.status or filters.needs_manual_match == "true" or filters.behind == "true") %}
 <div class="stats-row">
-    <div class="stat-card"><strong>{{ stats.total }}</strong> suivis</div>
-    <div class="stat-card"><strong>{{ stats.ongoing }}</strong> en cours</div>
-    <div class="stat-card"><strong>{{ stats.complete }}</strong> terminés</div>
-    <div class="stat-card"><strong>{{ stats.behind }}</strong> en retard</div>
-    <div class="stat-card"><strong>{{ stats.needs_match }}</strong> à re-matcher</div>
+    <a class="stat-card {{ "active" if no_filter }}" href="/"><strong>{{ stats.total }}</strong> suivis</a>
+    <a class="stat-card {{ "active" if filters.status == "ongoing" }}" href="/?status=ongoing"><strong>{{ stats.ongoing }}</strong> en cours</a>
+    <a class="stat-card {{ "active" if filters.status == "complete" }}" href="/?status=complete"><strong>{{ stats.complete }}</strong> terminés</a>
+    <a class="stat-card {{ "active" if filters.behind == "true" }}" href="/?behind=true"><strong>{{ stats.behind }}</strong> en retard</a>
+    <a class="stat-card {{ "active" if filters.needs_manual_match == "true" }}" href="/?needs_manual_match=true"><strong>{{ stats.needs_match }}</strong> à re-matcher</a>
 </div>
 
 <form id="filters" hx-get="/partials/mangas-table" hx-target="#mangas-table-wrapper" hx-trigger="change, keyup delay:300ms from:#q">

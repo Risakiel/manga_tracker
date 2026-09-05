@@ -42,6 +42,18 @@
     padding: 0.5rem 1rem;
     border: 1px solid var(--pico-muted-border-color);
     border-radius: var(--pico-border-radius);
+    color: var(--pico-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.stat-card:hover {
+    border-color: var(--pico-primary);
+}
+
+.stat-card.active {
+    border-color: var(--pico-primary);
+    background: color-mix(in srgb, var(--pico-primary) 18%, transparent);
 }
 
 .badge {
