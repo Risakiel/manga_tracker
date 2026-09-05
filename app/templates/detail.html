@@ -2,11 +2,11 @@
 {% block title %}{{ manga.title_en }} — Manga Tracker{% endblock %}
 {% block content %}
 
-<a href="/" data-discover="true">&larr; Retour</a>
+<a href="/" class="detail-back-link" data-discover="true">&larr; Retour</a>
 
-<div class="grid">
+<div class="detail-grid">
     <div>
-        {% if manga.cover_url %}<img src="{{ manga.cover_url }}" alt="" style="max-width:200px">{% endif %}
+        {% if manga.cover_url %}<img class="detail-cover" src="{{ manga.cover_url }}" alt="">{% endif %}
     </div>
     <div>
         <h2>{{ manga.title_en }}</h2>

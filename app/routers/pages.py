@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -16,7 +17,6 @@ from app.services.excel_importer import import_excel
 from app.services.suwayomi_client import SuwayomiManga
 from app.services.sync_service import (
     enrich_with_anilist,
-    sync_all_mangaupdates,
     sync_manga_with_mangaupdates,
     sync_suwayomi_library,
 )
@@ -27,6 +27,11 @@ templates = Jinja2Templates(directory="app/templates")
 # In-memory cache of the last Suwayomi reconciliation's unmatched entries, keyed
 # by suwayomi manga id. A single-process homelab app doesn't need this in the DB.
 _last_suwayomi_unmatched: dict[int, SuwayomiManga] = {}
+
+# In-memory progress for the "sync all" MangaUpdates job -- a bulk sync of ~300
+# manga at ~1 req/s takes several minutes, so the dashboard polls this instead
+# of leaving the user staring at a button that looks like it did nothing.
+_mu_sync_progress = {"running": False, "total": 0, "done": 0}
 
 
 def _filtered_mangas(session: Session, category: str, status: str, q: str, needs_manual_match: str) -> list[Manga]:
@@ -81,6 +86,7 @@ def dashboard(
             "filters": {"category": category, "status": status, "q": q, "needs_manual_match": needs_manual_match},
             "statuses": [s.value for s in Status],
             "flash": request.query_params.get("flash"),
+            "progress": _mu_sync_progress,
         },
     )
 
@@ -150,12 +156,28 @@ def manga_manual_match(
 def sync_all(background_tasks: BackgroundTasks):
     from app.database import session_scope
 
+    if _mu_sync_progress["running"]:
+        return RedirectResponse("/?flash=Une+synchronisation+est+déjà+en+cours...", status_code=303)
+
     def _job():
         with session_scope() as session:
-            sync_all_mangaupdates(session)
+            mangas = session.exec(select(Manga)).all()
+            _mu_sync_progress.update(running=True, total=len(mangas), done=0)
+            try:
+                with httpx.Client(timeout=15.0) as client:
+                    for manga in mangas:
+                        sync_manga_with_mangaupdates(session, manga, client=client)
+                        _mu_sync_progress["done"] += 1
+            finally:
+                _mu_sync_progress["running"] = False
 
     background_tasks.add_task(_job)
     return RedirectResponse("/?flash=Synchronisation+MangaUpdates+lancée+en+arrière-plan...", status_code=303)
+
+
+@router.get("/partials/sync-progress", response_class=HTMLResponse)
+def sync_progress(request: Request):
+    return templates.TemplateResponse(request, "_sync_progress.html", {"progress": _mu_sync_progress})
 
 
 @router.post("/suwayomi/sync")

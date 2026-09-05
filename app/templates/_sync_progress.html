@@ -1,0 +1,10 @@
+{% if progress.running %}
+<div id="sync-progress" hx-get="/partials/sync-progress" hx-trigger="load delay:2s" hx-swap="outerHTML">
+    <progress value="{{ progress.done }}" max="{{ progress.total }}"></progress>
+    Synchronisation MangaUpdates en cours : {{ progress.done }} / {{ progress.total }}
+</div>
+{% else %}
+<div id="sync-progress">
+    {% if progress.total %}<small>Dernière synchronisation : {{ progress.done }} / {{ progress.total }} traité(s).</small>{% endif %}
+</div>
+{% endif %}

@@ -29,16 +29,20 @@
             <option value="true" {{ "selected" if filters.needs_manual_match == "true" }}>À re-matcher seulement</option>
         </select>
     </div>
-    <div class="grid">
-        <button type="submit">Filtrer</button>
-        <form method="post" action="/sync-all" style="margin:0">
-            <button type="submit" class="secondary">🔄 Tout resynchroniser (MangaUpdates)</button>
-        </form>
-        <form method="post" action="/suwayomi/sync" style="margin:0">
-            <button type="submit" class="secondary">🔗 Resync Suwayomi</button>
-        </form>
-    </div>
+    <button type="submit">Filtrer</button>
 </form>
+
+<div class="grid">
+    <form method="post" action="/sync-all" style="margin:0">
+        <button type="submit" class="secondary" {{ "disabled" if progress.running }}>
+            🔄 Tout resynchroniser (MangaUpdates)
+        </button>
+    </form>
+    <form method="post" action="/suwayomi/sync" style="margin:0">
+        <button type="submit" class="secondary">🔗 Resync Suwayomi</button>
+    </form>
+</div>
+{% include "_sync_progress.html" %}
 
 <div id="mangas-table-wrapper">
     {% include "_mangas_table.html" %}

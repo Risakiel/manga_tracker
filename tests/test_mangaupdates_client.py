@@ -97,6 +97,22 @@ def test_resolve_series_falls_back_to_search_when_url_404():
 
 
 @respx.mock
+def test_fetch_series_falls_back_to_status_text_when_structured_fields_unset():
+    # Real-world case (adult-tagged series): MangaUpdates leaves latest_chapter=0
+    # and completed=False even though the free-text status says otherwise.
+    payload = dict(SAMPLE_SERIES_PAYLOAD)
+    payload["status"] = "79 Chapters (Complete)"
+    payload["latest_chapter"] = 0
+    payload["completed"] = False
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    series = fetch_series(44838842124)
+    assert series.latest_chapter == 79
+    assert series.completed is True
+
+
+@respx.mock
 def test_search_series_parses_results():
     respx.post("https://api.mangaupdates.com/v1/series/search").mock(
         return_value=httpx.Response(

@@ -6,10 +6,29 @@
 }
 
 .cover-thumb {
-    width: 40px;
-    height: 56px;
+    width: 64px;
+    height: 90px;
     object-fit: cover;
     border-radius: 4px;
+}
+
+.detail-back-link {
+    display: inline-block;
+    margin-bottom: 1.5rem;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: minmax(200px, 280px) 1fr;
+    gap: 2rem;
+    align-items: start;
+}
+
+.detail-cover {
+    width: 100%;
+    height: auto;
+    border-radius: var(--pico-border-radius);
+    object-fit: cover;
 }
 
 .stats-row {

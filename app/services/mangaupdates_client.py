@@ -17,6 +17,7 @@ from app.config import settings
 
 BASE_URL = "https://api.mangaupdates.com/v1"
 _SLUG_RE = re.compile(r"/series/([0-9a-z]+)/")
+_LEADING_CHAPTER_COUNT_RE = re.compile(r"^\s*(\d+)\s*Chapters?", re.IGNORECASE)
 
 _last_request_at = 0.0
 
@@ -72,13 +73,27 @@ def _throttle(min_interval: float) -> None:
 def _parse_series_payload(data: dict) -> MangaUpdatesSeries:
     authors = [a["name"] for a in data.get("authors", []) if a.get("type") == "Author"]
     artists = [a["name"] for a in data.get("authors", []) if a.get("type") == "Artist"]
+    status_raw = (data.get("status") or "").strip()
+
+    # For some series (adult-tagged ones especially) MangaUpdates leaves the
+    # structured `latest_chapter`/`completed` fields at 0/false even though the
+    # free-text status ("79 Chapters (Complete)") has the real figures -- fall
+    # back to parsing that text when the structured field looks unset.
+    latest_chapter = data.get("latest_chapter") or None
+    if not latest_chapter:
+        match = _LEADING_CHAPTER_COUNT_RE.match(status_raw)
+        if match:
+            latest_chapter = int(match.group(1))
+
+    completed = bool(data.get("completed")) or "complete" in status_raw.lower()
+
     return MangaUpdatesSeries(
         series_id=data["series_id"],
         title=data.get("title", ""),
         url=data.get("url", ""),
-        status_raw=(data.get("status") or "").strip(),
-        completed=bool(data.get("completed")),
-        latest_chapter=data.get("latest_chapter"),
+        status_raw=status_raw,
+        completed=completed,
+        latest_chapter=latest_chapter,
         description=data.get("description") or "",
         genres=[g["genre"] for g in data.get("genres", []) if g.get("genre")],
         authors=authors,
