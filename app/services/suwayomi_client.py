@@ -78,6 +78,11 @@ def fetch_library(client: Optional[httpx.Client] = None) -> list[SuwayomiManga]:
                 raise SuwayomiUnavailable(str(payload["errors"]))
             connection = payload["data"]["mangas"]
             for node in connection["nodes"]:
+                # thumbnailUrl comes back as a server-relative path (e.g.
+                # "/api/v1/manga/20/thumbnail"), not a full URL.
+                thumbnail_url = node.get("thumbnailUrl")
+                if thumbnail_url and thumbnail_url.startswith("/"):
+                    thumbnail_url = settings.suwayomi_url.rstrip("/") + thumbnail_url
                 mangas.append(
                     SuwayomiManga(
                         id=node["id"],
@@ -85,7 +90,7 @@ def fetch_library(client: Optional[httpx.Client] = None) -> list[SuwayomiManga]:
                         author=node.get("author"),
                         artist=node.get("artist"),
                         status=node.get("status", ""),
-                        thumbnail_url=node.get("thumbnailUrl"),
+                        thumbnail_url=thumbnail_url,
                         download_count=node.get("downloadCount") or 0,
                         chapter_total_count=(node.get("chapters") or {}).get("totalCount", 0),
                     )
