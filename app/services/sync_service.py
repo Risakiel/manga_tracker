@@ -13,7 +13,7 @@ import httpx
 from sqlmodel import Session, select
 
 from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
-from app.services import anilist_client, mangaupdates_client, suwayomi_client
+from app.services import anilist_client, library_client, mangaupdates_client, suwayomi_client
 from app.services.matching import best_match, normalize_title
 
 logger = logging.getLogger(__name__)
@@ -173,10 +173,12 @@ def sync_suwayomi_library(
                 session.commit()
                 matched += 1
             else:
+                guessed_category = Category.pornhwa if entry.looks_adult else Category.manga
+                server_folder = library_client.suggest_folder(entry.title, guessed_category) or entry.title
                 manga = Manga(
-                    category=Category.pornhwa if entry.looks_adult else Category.manga,
+                    category=guessed_category,
                     title_en=entry.title,
-                    server_folder=entry.title,
+                    server_folder=server_folder,
                     mangaupdates_url="",
                     suwayomi_manga_id=entry.id,
                     suwayomi_chapter_count=entry.download_count,

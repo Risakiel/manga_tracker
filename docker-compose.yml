@@ -9,6 +9,9 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      # Read-only NAS share holding the actual manga/pornhwa folders. Must
+      # contain exactly two subdirectories: "Manga" and "Pornhwa".
+      - /mnt/remotes/192.168.1.41_Komga:/library:ro
     environment:
       SUWAYOMI_URL: "http://192.168.1.96:4567"
       SUWAYOMI_USERNAME: ""
@@ -16,3 +19,4 @@ services:
       SYNC_INTERVAL_HOURS: "24"
       SUWAYOMI_SYNC_INTERVAL_HOURS: "24"
       ENABLE_SCHEDULER: "true"
+      LIBRARY_ROOT: "/library"

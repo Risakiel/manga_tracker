@@ -2,6 +2,7 @@ import httpx
 import respx
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.config import settings
 from app.models import Category, Manga
 from app.services import suwayomi_client
 from app.services.sync_service import sync_suwayomi_library
@@ -131,6 +132,29 @@ def test_suwayomi_sync_handles_duplicate_titles_as_separate_entries(monkeypatch)
     assert len(rows) == 2
     suwayomi_ids = {m.suwayomi_manga_id for m in rows}
     assert suwayomi_ids == {627, 628}
+
+
+@respx.mock
+def test_suwayomi_sync_uses_real_folder_name_when_library_mounted(tmp_path, monkeypatch):
+    (tmp_path / "Manga" / "DICE_ The Cube that Changes Everything").mkdir(parents=True)
+    monkeypatch.setattr(settings, "library_root", tmp_path)
+
+    session = _session()
+    monkeypatch.setattr(
+        suwayomi_client,
+        "fetch_library",
+        lambda client=None: [
+            suwayomi_client.SuwayomiManga(id=1, title="DICE: The Cube that Changes Everything", download_count=1)
+        ],
+    )
+    respx.post("https://api.mangaupdates.com/v1/series/search").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+
+    sync_suwayomi_library(session)
+
+    manga = session.exec(select(Manga)).one()
+    assert manga.server_folder == "DICE_ The Cube that Changes Everything"
 
 
 def test_suwayomi_sync_reports_unavailable_server(monkeypatch):

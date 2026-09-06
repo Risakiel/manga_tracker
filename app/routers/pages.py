@@ -10,9 +10,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
+from app.config import settings
 from app.database import get_session
 from app.models import Category, Manga, Status, SyncLog
-from app.services import mangaupdates_client
+from app.services import library_client, mangaupdates_client
 from app.services.excel_importer import import_excel
 from app.services.sync_service import (
     enrich_with_anilist,
@@ -140,7 +141,22 @@ def manga_detail(request: Request, manga_id: int, session: Session = Depends(get
     manga = session.get(Manga, manga_id)
     if manga is None:
         return HTMLResponse("Manga introuvable", status_code=404)
-    return templates.TemplateResponse(request, "detail.html", {"manga": manga})
+    folder_options = library_client.list_folders(manga.category)
+    return templates.TemplateResponse(
+        request,
+        "detail.html",
+        {
+            "manga": manga,
+            "library_mounted": library_client.is_mounted(),
+            "library_root": str(settings.library_root),
+            "folder_options": folder_options,
+            "suggested_folder": (
+                library_client.suggest_folder(manga.title_en, manga.category)
+                if folder_options and manga.server_folder not in folder_options
+                else None
+            ),
+        },
+    )
 
 
 @router.post("/manga/{manga_id}/sync")
@@ -168,6 +184,19 @@ def manga_set_mangaupdates_url(
         # right away instead of waiting for the next scheduled/manual sync.
         sync_manga_with_mangaupdates(session, manga)
         enrich_with_anilist(session, manga)
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/server-folder")
+def manga_set_server_folder(
+    manga_id: int, server_folder: str = Form(...), session: Session = Depends(get_session)
+):
+    manga = session.get(Manga, manga_id)
+    if manga is not None and server_folder.strip():
+        manga.server_folder = server_folder.strip()
+        manga.updated_at = datetime.now(timezone.utc)
+        session.add(manga)
+        session.commit()
     return RedirectResponse(f"/manga/{manga_id}", status_code=303)
 
 

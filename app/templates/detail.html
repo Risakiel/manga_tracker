@@ -25,7 +25,31 @@
         {% if manga.suwayomi_categories %}
         <p><strong>Catégories Suwayomi :</strong> {{ manga.suwayomi_categories | join(", ") }}</p>
         {% endif %}
-        <p><strong>Dossier serveur :</strong> {{ manga.server_folder }}</p>
+        <form method="post" action="/manga/{{ manga.id }}/server-folder">
+            <label>
+                Dossier serveur
+                {% if folder_options %}
+                <select name="server_folder">
+                    {% if manga.server_folder not in folder_options %}
+                    <option value="{{ manga.server_folder }}" selected>{{ manga.server_folder }} (actuel, introuvable)</option>
+                    {% endif %}
+                    {% for f in folder_options %}
+                    <option value="{{ f }}" {{ "selected" if f == manga.server_folder }}>{{ f }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="text" name="server_folder" value="{{ manga.server_folder }}" required>
+                <small>Partage NAS non monté ({{ library_root }}) — saisie libre.</small>
+                {% endif %}
+            </label>
+            <button type="submit" class="secondary">Enregistrer le dossier</button>
+        </form>
+        {% if suggested_folder %}
+        <form method="post" action="/manga/{{ manga.id }}/server-folder" style="display:inline">
+            <input type="hidden" name="server_folder" value="{{ suggested_folder }}">
+            <small>Suggestion : <button type="submit" class="outline secondary" style="font-size:0.8rem; padding:0.1rem 0.5rem; display:inline">{{ suggested_folder }}</button></small>
+        </form>
+        {% endif %}
         <p><strong>Auteur :</strong> {{ manga.author or "?" }} &nbsp; <strong>Artiste :</strong> {{ manga.artist or "?" }}</p>
         <p><strong>Genres :</strong> {{ manga.genres | join(", ") }}</p>
         <p><strong>Titres alternatifs :</strong> {{ manga.alt_titles | join(" · ") }}</p>

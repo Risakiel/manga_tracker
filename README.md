@@ -45,6 +45,23 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 | `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates | 24 |
 | `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi | 24 |
 | `ENABLE_SCHEDULER` | Désactive les jobs automatiques (sync manuelle uniquement) | true |
+| `LIBRARY_ROOT` | Chemin (côté conteneur) du partage NAS monté en lecture seule | `/library` |
+
+### Partage NAS ("Dossier serveur")
+
+Pour que le champ "Dossier serveur" d'une fiche manga propose une vraie liste des dossiers
+existants sur ton NAS (au lieu d'une simple saisie libre), monte le partage en lecture seule
+dans le conteneur — il doit contenir exactement deux sous-dossiers, `Manga` et `Pornhwa` :
+
+```yaml
+volumes:
+  - /mnt/remotes/192.168.1.41_Komga:/library:ro
+```
+
+Sur Unraid (template natif, pas docker-compose) : édite le conteneur, **Add another Path**
+avec Container Path `/library`, Host Path `/mnt/remotes/192.168.1.41_Komga`, Access Mode
+"Read Only". Sans ce montage, le champ reste un simple texte libre — la fonctionnalité est
+entièrement optionnelle.
 
 Si ta version de Suwayomi expose des noms de champs GraphQL différents de ceux utilisés
 dans `app/services/suwayomi_client.py` (vérifié contre le code source du projet, pas contre
