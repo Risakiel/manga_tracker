@@ -13,7 +13,7 @@ import httpx
 from sqlmodel import Session, select
 
 from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
-from app.services import anilist_client, library_client, mangaupdates_client, suwayomi_client
+from app.services import anilist_client, komga_client, library_client, mangaupdates_client, suwayomi_client
 from app.services.matching import best_match, normalize_title
 
 logger = logging.getLogger(__name__)
@@ -213,3 +213,126 @@ def sync_suwayomi_library(
     )
     session.commit()
     return {"matched": matched, "created": created}
+
+
+def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> bool:
+    """Non-destructive enrichment: only fills Komga fields that are genuinely
+    empty and unlocked there -- never overwrites anything already set,
+    whether by the user or another tool (e.g. komf)."""
+    patch: dict = {}
+    if manga.description and not series.summary and not series.summary_locked:
+        patch["summary"] = manga.description
+    if manga.genres and not series.genres and not series.genres_locked:
+        patch["genres"] = manga.genres
+    if manga.alt_titles and not series.alternate_titles and not series.alternate_titles_locked:
+        # Komga rejects a blank label (400 on the whole patch, not just this
+        # field) -- confirmed live: {"fieldName":"alternateTitles[0].label",
+        # "message":"must not be blank"}.
+        patch["alternateTitles"] = [
+            {"label": komga_client.MANGAUPDATES_LINK_LABEL, "title": t} for t in manga.alt_titles
+        ]
+    if manga.mangaupdates_url and not series.mangaupdates_url and not series.links_locked:
+        patch["links"] = series.raw_links + [
+            {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
+        ]
+
+    if not patch:
+        return False
+    try:
+        komga_client.update_metadata(series.id, patch, client=client)
+        return True
+    except komga_client.KomgaUnavailable:
+        return False
+
+
+def sync_komga_library(
+    session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
+) -> dict:
+    """Reconcile tracked mangas against Komga (the actual reading library):
+    pulls real read progress (booksReadCount vs booksCount), and pushes back
+    MangaUpdates-sourced metadata Komga is missing (summary/genres/alt
+    titles/MangaUpdates link) -- only filling gaps, never overwriting.
+
+    Matching priority: MangaUpdates series_id (both sides usually already
+    link to it) > exact folder-name match within the same category > fuzzy
+    title match. Komga series with no match are only counted, not created --
+    Suwayomi (not Komga) is this app's source of truth for which manga exist.
+    """
+    try:
+        library_ids = komga_client.list_library_ids()
+    except komga_client.KomgaUnavailable as exc:
+        session.add(SyncLog(manga_id=None, source=SyncSource.komga, status=SyncStatus.error, message=str(exc)))
+        session.commit()
+        return {"matched": 0, "unmatched": 0, "pushed": 0, "error": str(exc)}
+
+    mangas = session.exec(select(Manga)).all()
+    by_folder = {(m.category, normalize_title(m.server_folder)): m for m in mangas}
+    by_mu_id: dict[int, Manga] = {}
+    for m in mangas:
+        series_id = mangaupdates_client.extract_series_id(m.mangaupdates_url) if m.mangaupdates_url else None
+        if series_id is not None:
+            by_mu_id[series_id] = m
+
+    try:
+        entries: list[tuple[Category, komga_client.KomgaSeries]] = []
+        for category, library_id in library_ids.items():
+            for series in komga_client.fetch_series(library_id):
+                entries.append((category, series))
+    except komga_client.KomgaUnavailable as exc:
+        session.add(SyncLog(manga_id=None, source=SyncSource.komga, status=SyncStatus.error, message=str(exc)))
+        session.commit()
+        return {"matched": 0, "unmatched": 0, "pushed": 0, "error": str(exc)}
+
+    matched = 0
+    unmatched = 0
+    pushed = 0
+    total = len(entries)
+    # Must be a Komga-authenticated client (X-API-Key) -- a bare httpx.Client
+    # here previously caused every push to fail with 401, silently, since
+    # update_metadata() only errors loudly when it opens its own client.
+    with komga_client.open_client() as client:
+        for i, (category, series) in enumerate(entries, start=1):
+            manga = None
+            if series.mangaupdates_url:
+                mu_series_id = mangaupdates_client.extract_series_id(series.mangaupdates_url)
+                if mu_series_id is not None:
+                    manga = by_mu_id.get(mu_series_id)
+            if manga is None:
+                manga = by_folder.get((category, normalize_title(series.name)))
+            if manga is None:
+                candidates = {m.id: m.title_en for m in mangas if m.category == category}
+                match = best_match(series.name, candidates)
+                if match is not None:
+                    manga_id, _score = match
+                    manga = next((m for m in mangas if m.id == manga_id), None)
+
+            if manga is None:
+                unmatched += 1
+                if progress_callback:
+                    progress_callback(i, total)
+                continue
+
+            manga.komga_series_id = series.id
+            manga.komga_books_count = series.books_count
+            manga.komga_books_read_count = series.books_read_count
+            manga.updated_at = datetime.now(timezone.utc)
+            session.add(manga)
+            session.commit()
+            matched += 1
+
+            if _push_metadata_to_komga(manga, series, client=client):
+                pushed += 1
+
+            if progress_callback:
+                progress_callback(i, total)
+
+    session.add(
+        SyncLog(
+            manga_id=None,
+            source=SyncSource.komga,
+            status=SyncStatus.success,
+            message=f"matched={matched} unmatched={unmatched} pushed={pushed}",
+        )
+    )
+    session.commit()
+    return {"matched": matched, "unmatched": unmatched, "pushed": pushed}

@@ -28,6 +28,7 @@ class SyncSource(str, Enum):
     mangaupdates = "mangaupdates"
     anilist = "anilist"
     suwayomi = "suwayomi"
+    komga = "komga"
     excel = "excel"
 
 
@@ -57,6 +58,10 @@ class Manga(SQLModel, table=True):
     suwayomi_manga_id: Optional[int] = Field(default=None, index=True)
     suwayomi_chapter_count: Optional[int] = None
     suwayomi_categories_json: str = Field(default="[]", sa_column=Column(Text))
+
+    komga_series_id: Optional[str] = Field(default=None, index=True)
+    komga_books_count: Optional[int] = None
+    komga_books_read_count: Optional[int] = None
 
     author: str = ""
     artist: str = ""
@@ -108,6 +113,12 @@ class Manga(SQLModel, table=True):
         if self.suwayomi_chapter_count is None or self.mu_latest_chapter is None:
             return None
         return max(self.mu_latest_chapter - self.suwayomi_chapter_count, 0)
+
+    @property
+    def komga_unread_count(self) -> Optional[int]:
+        if self.komga_books_count is None or self.komga_books_read_count is None:
+            return None
+        return max(self.komga_books_count - self.komga_books_read_count, 0)
 
 
 class SyncLog(SQLModel, table=True):

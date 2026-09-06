@@ -18,7 +18,9 @@ from app.config import settings
 from app.models import Category
 from app.services.matching import best_match
 
-_CATEGORY_DIRS = {
+# Also reused by komga_client.py to pick out the two Komga libraries (out of
+# however many exist on the server) that correspond to this app's Category.
+CATEGORY_DIR_NAMES = {
     Category.manga: "Manga",
     Category.pornhwa: "Pornhwa",
 }
@@ -29,7 +31,7 @@ def is_mounted() -> bool:
 
 
 def category_root(category: Category) -> Path:
-    return settings.library_root / _CATEGORY_DIRS[category]
+    return settings.library_root / CATEGORY_DIR_NAMES[category]
 
 
 def list_folders(category: Category) -> list[str]:

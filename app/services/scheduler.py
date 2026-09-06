@@ -4,7 +4,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.database import session_scope
-from app.services.sync_service import sync_all_mangaupdates, sync_suwayomi_library
+from app.services.sync_service import sync_all_mangaupdates, sync_komga_library, sync_suwayomi_library
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,12 @@ def _run_suwayomi_sync() -> None:
     with session_scope() as session:
         result = sync_suwayomi_library(session)
         logger.info("scheduled Suwayomi sync done: %s", result)
+
+
+def _run_komga_sync() -> None:
+    with session_scope() as session:
+        result = sync_komga_library(session)
+        logger.info("scheduled Komga sync done: %s", result)
 
 
 def start_scheduler() -> BackgroundScheduler | None:
@@ -46,12 +52,21 @@ def start_scheduler() -> BackgroundScheduler | None:
         id="suwayomi_sync",
         next_run_time=None,
     )
+    if settings.komga_url:
+        scheduler.add_job(
+            _run_komga_sync,
+            "interval",
+            hours=settings.komga_sync_interval_hours,
+            id="komga_sync",
+            next_run_time=None,
+        )
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "scheduler started: mangaupdates every %sh, suwayomi every %sh",
+        "scheduler started: mangaupdates every %sh, suwayomi every %sh, komga %s",
         settings.sync_interval_hours,
         settings.suwayomi_sync_interval_hours,
+        f"every {settings.komga_sync_interval_hours}h" if settings.komga_url else "disabled (no KOMGA_URL)",
     )
     return scheduler
 

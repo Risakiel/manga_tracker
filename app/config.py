@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     suwayomi_username: str = ""
     suwayomi_password: str = ""
 
+    komga_url: str = ""
+    komga_api_key: str = ""
+
     # Read-only bind-mount of the NAS share holding the actual manga/pornhwa
     # folders (e.g. Unraid's /mnt/remotes/<host>_Komga), expected to contain
     # exactly two subdirectories: "Manga" and "Pornhwa".
@@ -20,6 +23,7 @@ class Settings(BaseSettings):
 
     sync_interval_hours: float = 24.0
     suwayomi_sync_interval_hours: float = 24.0
+    komga_sync_interval_hours: float = 24.0
     enable_scheduler: bool = True
 
     mangaupdates_min_request_interval_seconds: float = 1.0

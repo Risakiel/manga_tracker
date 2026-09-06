@@ -13,10 +13,11 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.database import get_session
 from app.models import Category, Manga, Status, SyncLog
-from app.services import library_client, mangaupdates_client
+from app.services import komga_client, library_client, mangaupdates_client
 from app.services.excel_importer import import_excel
 from app.services.sync_service import (
     enrich_with_anilist,
+    sync_komga_library,
     sync_manga_with_mangaupdates,
     sync_suwayomi_library,
 )
@@ -24,12 +25,21 @@ from app.services.sync_service import (
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
-# In-memory progress for the bulk background jobs -- both take several
+# In-memory progress for the bulk background jobs -- all take several
 # minutes (one HTTP request per manga, throttled), so the dashboard polls
 # these instead of leaving the user staring at a button that looks like it
 # did nothing. A single-process homelab app doesn't need this in the DB.
 _mu_sync_progress = {"running": False, "total": 0, "done": 0}
 _suwayomi_sync_progress = {"running": False, "total": 0, "done": 0, "matched": 0, "created": 0, "error": None}
+_komga_sync_progress = {
+    "running": False,
+    "total": 0,
+    "done": 0,
+    "matched": 0,
+    "unmatched": 0,
+    "pushed": 0,
+    "error": None,
+}
 
 
 def _filtered_mangas(
@@ -154,6 +164,9 @@ def manga_detail(request: Request, manga_id: int, session: Session = Depends(get
                 library_client.suggest_folder(manga.title_en, manga.category)
                 if folder_options and manga.server_folder not in folder_options
                 else None
+            ),
+            "komga_web_url": (
+                komga_client.series_web_url(manga.komga_series_id) if manga.komga_series_id else None
             ),
         },
     )
@@ -315,6 +328,55 @@ def suwayomi_page(request: Request, session: Session = Depends(get_session)):
         {
             "unresolved": unresolved,
             "progress": _suwayomi_sync_progress,
+            "flash": request.query_params.get("flash"),
+        },
+    )
+
+
+@router.post("/komga/sync")
+def komga_sync(background_tasks: BackgroundTasks):
+    from app.database import session_scope
+
+    if _komga_sync_progress["running"]:
+        return RedirectResponse("/komga?flash=Une+synchronisation+Komga+est+déjà+en+cours...", status_code=303)
+
+    def _job():
+        _komga_sync_progress.update(running=True, total=0, done=0, matched=0, unmatched=0, pushed=0, error=None)
+
+        def _on_progress(done: int, total: int) -> None:
+            _komga_sync_progress.update(done=done, total=total)
+
+        try:
+            with session_scope() as session:
+                result = sync_komga_library(session, progress_callback=_on_progress)
+                _komga_sync_progress["matched"] = result.get("matched", 0)
+                _komga_sync_progress["unmatched"] = result.get("unmatched", 0)
+                _komga_sync_progress["pushed"] = result.get("pushed", 0)
+                _komga_sync_progress["error"] = result.get("error")
+        finally:
+            _komga_sync_progress["running"] = False
+
+    background_tasks.add_task(_job)
+    return RedirectResponse("/komga?flash=Synchronisation+Komga+lancée+en+arrière-plan...", status_code=303)
+
+
+@router.get("/partials/komga-sync-progress", response_class=HTMLResponse)
+def komga_sync_progress_partial(request: Request):
+    return templates.TemplateResponse(request, "_komga_progress.html", {"progress": _komga_sync_progress})
+
+
+@router.get("/komga", response_class=HTMLResponse)
+def komga_page(request: Request, session: Session = Depends(get_session)):
+    unmatched_manga = session.exec(
+        select(Manga).where(Manga.komga_series_id == None).order_by(Manga.title_en)  # noqa: E711
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "komga.html",
+        {
+            "komga_configured": bool(settings.komga_url),
+            "unmatched_manga": unmatched_manga,
+            "progress": _komga_sync_progress,
             "flash": request.query_params.get("flash"),
         },
     )

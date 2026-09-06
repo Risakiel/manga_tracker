@@ -17,6 +17,11 @@ bibliothèque [Suwayomi](https://github.com/Suwayomi/Suwayomi-Server) + [Komga](
   fraîchement importé depuis Suwayomi qui n'en a pas encore).
 - Enrichissement complémentaire via [AniList](https://anilist.co/) quand MangaUpdates ne
   suffit pas (couverture, titres alternatifs).
+- Intégration [Komga](https://komga.org/) (la bibliothèque de lecture) : récupère la vraie
+  progression de lecture (chapitres lus vs juste téléchargés), pousse vers Komga les infos
+  MangaUpdates qu'il n'a pas encore (résumé, genres, titres alternatifs, lien MangaUpdates —
+  uniquement quand Komga n'a rien à cet endroit, jamais en écrasant), et ajoute un lien
+  "Voir sur Komga" sur chaque fiche.
 - Interface web simple (FastAPI + Jinja2 + HTMX, SQLite), packagée en image Docker. Le
   tableau de bord distingue le **Type** (Manga/Pornhwa, propre à cette appli) des
   **Catégories Suwayomi** (tes groupes de bibliothèque) comme deux filtres séparés.
@@ -42,10 +47,27 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 |---|---|---|
 | `SUWAYOMI_URL` | URL de base de ton instance Suwayomi (sans `/api/graphql`) | vide (sync Suwayomi désactivée) |
 | `SUWAYOMI_USERNAME` / `SUWAYOMI_PASSWORD` | Si Basic Auth activé sur Suwayomi | vide |
+| `KOMGA_URL` | URL de base de ton instance Komga | vide (intégration Komga désactivée) |
+| `KOMGA_API_KEY` | Clé API Komga (Settings > API Keys, compte ADMIN requis pour l'écriture) | vide |
 | `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates | 24 |
 | `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi | 24 |
+| `KOMGA_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation Komga | 24 |
 | `ENABLE_SCHEDULER` | Désactive les jobs automatiques (sync manuelle uniquement) | true |
 | `LIBRARY_ROOT` | Chemin (côté conteneur) du partage NAS monté en lecture seule | `/library` |
+
+### Komga
+
+La correspondance entre un manga suivi et sa fiche Komga se fait, dans l'ordre : par lien
+MangaUpdates commun (le plus fiable), puis par nom de dossier exact (même NAS, même
+convention de nommage que Komga), puis par titre approché. Seules les bibliothèques Komga
+nommées `Manga` et `Pornhwa` sont prises en compte, comme pour le partage NAS.
+
+Le push de métadonnées vers Komga est strictement non-destructif : un champ n'est envoyé
+que s'il est **vide et non verrouillé** côté Komga (jamais s'il a déjà une valeur, qu'elle
+vienne de toi, d'un scan ComicInfo.xml, ou d'un autre outil comme komf). Vérifié en direct
+sur une vraie bibliothèque (plus de 300 séries) : liens MangaUpdates ajoutés sans toucher
+les liens déjà présents, résumé/genres/titres alternatifs remplis seulement là où ils
+étaient réellement absents.
 
 ### Partage NAS ("Dossier serveur")
 
@@ -76,7 +98,7 @@ ou simplement l'explorateur GraphQL intégré à Suwayomi) permettra d'ajuster l
    - Copier `docker-compose.yml` dans un dossier de ton appdata (ex: `/mnt/user/appdata/manga-tracker/`).
    - Remplacer `build: .` par `image: ghcr.io/<toi>/manga_tracker:latest` si tu ne veux pas
      builder localement.
-   - Ajuster `SUWAYOMI_URL` avec l'IP/port de ton conteneur Suwayomi.
+   - Ajuster `SUWAYOMI_URL` et `KOMGA_URL`/`KOMGA_API_KEY` avec les infos de tes instances.
    - `docker compose up -d`.
 3. Le volume `./data` contient la base SQLite — à sauvegarder comme le reste de ton appdata.
 4. Peuplement initial : soit importer l'Excel existant (`/import`), soit directement lancer
@@ -102,11 +124,13 @@ app/
 │   ├── mangaupdates_client.py  # Décodage URL -> series_id, fetch, search fallback
 │   ├── anilist_client.py        # Enrichissement complémentaire
 │   ├── suwayomi_client.py        # GraphQL: bibliothèque, genres, catégories, chapitres
-│   ├── excel_importer.py         # Import non-destructif de l'Excel
-│   ├── matching.py                # Normalisation + fuzzy match (rapidfuzz)
-│   ├── sync_service.py             # Orchestration : reconciliation/auto-import Suwayomi,
-│   │                                 sync MangaUpdates, enrichissement AniList
-│   └── scheduler.py                 # Jobs périodiques (APScheduler)
+│   ├── komga_client.py            # REST: séries, progression de lecture, push metadata
+│   ├── library_client.py           # Liste les vrais dossiers du partage NAS monté
+│   ├── excel_importer.py            # Import non-destructif de l'Excel
+│   ├── matching.py                   # Normalisation + fuzzy match (rapidfuzz)
+│   ├── sync_service.py                # Orchestration : reconciliation/auto-import Suwayomi,
+│   │                                    sync MangaUpdates, enrichissement AniList, sync Komga
+│   └── scheduler.py                    # Jobs périodiques (APScheduler)
 ├── templates/                       # Jinja2 + HTMX + Pico.css (vendored, pas de CDN)
 └── static/
 ```

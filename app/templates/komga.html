@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Komga — Manga Tracker{% endblock %}
+{% block content %}
+
+<h2>Synchronisation Komga</h2>
+<p>
+    Relie chaque manga suivi à sa fiche Komga (par lien MangaUpdates commun, puis par nom de
+    dossier, puis par titre) pour récupérer la vraie progression de lecture (chapitres lus vs
+    téléchargés), et pousse vers Komga les infos MangaUpdates qui lui manquent (résumé, genres,
+    titres alternatifs, lien MangaUpdates) — uniquement quand Komga n'a rien de saisi à cet
+    endroit, jamais en écrasant une valeur existante.
+</p>
+
+{% if not komga_configured %}
+<article style="color:#f87171">KOMGA_URL n'est pas configuré — voir le README pour l'activer.</article>
+{% else %}
+<form method="post" action="/komga/sync">
+    <button type="submit" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
+</form>
+{% include "_komga_progress.html" %}
+
+{% if unmatched_manga %}
+<article>
+    <h3>Non liés à Komga ({{ unmatched_manga | length }})</h3>
+    <p>Ces mangas suivis n'ont pas (encore) été retrouvés sur Komga — vérifie que le nom du
+    "Dossier serveur" correspond exactement au dossier réel, puis resynchronise.</p>
+    <table>
+        <thead><tr><th></th><th>Titre</th><th>Type</th><th>Dossier serveur</th></tr></thead>
+        <tbody>
+        {% for manga in unmatched_manga %}
+        <tr>
+            <td>{% if manga.cover_url %}<img class="cover-thumb" src="{{ manga.cover_url }}" alt="">{% endif %}</td>
+            <td><a href="/manga/{{ manga.id }}">{{ manga.title_en }}</a></td>
+            <td>{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}</td>
+            <td>{{ manga.server_folder }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+{% endif %}
+
+{% endblock %}

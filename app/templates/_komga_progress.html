@@ -1,0 +1,14 @@
+{% if progress.running %}
+<div id="komga-progress" hx-get="/partials/komga-sync-progress" hx-trigger="load delay:2s" hx-swap="outerHTML">
+    <progress value="{{ progress.done }}" max="{{ progress.total if progress.total else 1 }}"></progress>
+    Synchronisation Komga en cours : {{ progress.done }} / {{ progress.total }}
+</div>
+{% else %}
+<div id="komga-progress">
+    {% if progress.error %}
+    <p style="color:#f87171">{{ progress.error }}</p>
+    {% elif progress.total %}
+    <small>Dernière synchronisation : {{ progress.matched }} liés, {{ progress.unmatched }} non trouvés sur Komga, {{ progress.pushed }} fiche(s) enrichie(s) sur Komga.</small>
+    {% endif %}
+</div>
+{% endif %}

@@ -57,6 +57,12 @@
            &nbsp; <strong>Dernier chapitre MangaUpdates :</strong> {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "?" }}
            {% if manga.chapters_behind %}&nbsp;(<span class="behind-badge">en retard de {{ manga.chapters_behind | int }}</span>){% endif %}
         </p>
+        {% if manga.komga_series_id %}
+        <p><strong>Lu sur Komga :</strong> {{ manga.komga_books_read_count }} / {{ manga.komga_books_count }}
+           {% if manga.komga_unread_count %}&nbsp;({{ manga.komga_unread_count }} non lu(s)){% endif %}
+           {% if komga_web_url %}&nbsp;· <a href="{{ komga_web_url }}" target="_blank" rel="noopener">Voir sur Komga ↗</a>{% endif %}
+        </p>
+        {% endif %}
         <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url">
             <label>
                 Lien MangaUpdates
