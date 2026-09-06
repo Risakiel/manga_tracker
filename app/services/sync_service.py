@@ -7,11 +7,12 @@ single code path (and a single place throttling/logging happens).
 
 import logging
 from datetime import datetime, timezone
+from typing import Callable, Optional
 
 import httpx
 from sqlmodel import Session, select
 
-from app.models import Manga, Status, SyncLog, SyncSource, SyncStatus
+from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
 from app.services import anilist_client, mangaupdates_client, suwayomi_client
 from app.services.matching import best_match, normalize_title
 
@@ -118,51 +119,95 @@ def enrich_with_anilist(session: Session, manga: Manga, client: httpx.Client | N
     session.commit()
 
 
-def sync_suwayomi_library(session: Session) -> dict:
-    """Match the live Suwayomi library against tracked mangas.
+def sync_suwayomi_library(
+    session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
+) -> dict:
+    """Reconcile the live Suwayomi library against tracked mangas.
 
-    Returns a summary dict; also returns the raw library + unmatched entries
-    so the caller (router) can show an "unlinked" page without persisting a
-    second copy of the Suwayomi library.
+    Suwayomi is the source of truth for *which* manga exist: anything in the
+    library that isn't already tracked gets created automatically (type
+    guessed from Suwayomi's genre tags, corrigible later), then given an
+    immediate best-effort MangaUpdates sync so it isn't left completely
+    blank. Suwayomi's own categories (its user-organized library groupings)
+    are copied onto every matched/created manga either way.
     """
     try:
         library = suwayomi_client.fetch_library()
     except suwayomi_client.SuwayomiUnavailable as exc:
         session.add(SyncLog(manga_id=None, source=SyncSource.suwayomi, status=SyncStatus.error, message=str(exc)))
         session.commit()
-        return {"matched": 0, "unmatched": [], "error": str(exc)}
+        return {"matched": 0, "created": 0, "error": str(exc)}
 
     mangas = session.exec(select(Manga)).all()
     by_folder = {normalize_title(m.server_folder): m for m in mangas}
     by_title = {m.id: m.title_en for m in mangas if m.id is not None}
 
     matched = 0
-    unmatched = []
-    for entry in library:
-        manga = by_folder.get(normalize_title(entry.title))
-        if manga is None:
-            match = best_match(entry.title, by_title)
-            if match is not None:
-                manga_id, _score = match
-                manga = next((m for m in mangas if m.id == manga_id), None)
+    created = 0
+    total = len(library)
+    # Some libraries have the exact same title added twice under different
+    # source IDs (confirmed on a real library). Without this, both entries
+    # would match the same tracked row and the second silently overwrites the
+    # first's suwayomi_manga_id -- track claims so a duplicate falls through
+    # to auto-create instead, since it's a genuinely distinct library item.
+    claimed_ids: set[int] = set()
+    with httpx.Client(timeout=15.0) as mu_client:
+        for i, entry in enumerate(library, start=1):
+            manga = by_folder.get(normalize_title(entry.title))
+            if manga is not None and manga.id in claimed_ids:
+                manga = None
+            if manga is None:
+                match = best_match(entry.title, by_title)
+                if match is not None:
+                    manga_id, _score = match
+                    if manga_id not in claimed_ids:
+                        manga = next((m for m in mangas if m.id == manga_id), None)
 
-        if manga is None:
-            unmatched.append(entry)
-            continue
+            if manga is not None:
+                claimed_ids.add(manga.id)
+                manga.suwayomi_manga_id = entry.id
+                manga.suwayomi_chapter_count = entry.download_count
+                manga.suwayomi_categories = entry.categories
+                manga.updated_at = datetime.now(timezone.utc)
+                session.add(manga)
+                session.commit()
+                matched += 1
+            else:
+                manga = Manga(
+                    category=Category.pornhwa if entry.looks_adult else Category.manga,
+                    title_en=entry.title,
+                    server_folder=entry.title,
+                    mangaupdates_url="",
+                    suwayomi_manga_id=entry.id,
+                    suwayomi_chapter_count=entry.download_count,
+                    cover_url=entry.thumbnail_url or "",
+                    author=entry.author or "",
+                    artist=entry.artist or "",
+                )
+                manga.suwayomi_categories = entry.categories
+                session.add(manga)
+                session.commit()
+                session.refresh(manga)
+                mangas.append(manga)
+                by_folder[normalize_title(manga.server_folder)] = manga
+                by_title[manga.id] = manga.title_en
+                created += 1
 
-        manga.suwayomi_manga_id = entry.id
-        manga.suwayomi_chapter_count = entry.download_count
-        manga.updated_at = datetime.now(timezone.utc)
-        session.add(manga)
-        matched += 1
+                # Best-effort auto-match against MangaUpdates by title so a
+                # freshly-imported manga isn't left completely blank; falls
+                # back to needs_manual_match with candidates if ambiguous.
+                sync_manga_with_mangaupdates(session, manga, client=mu_client)
+
+            if progress_callback:
+                progress_callback(i, total)
 
     session.add(
         SyncLog(
             manga_id=None,
             source=SyncSource.suwayomi,
             status=SyncStatus.success,
-            message=f"matched={matched} unmatched={len(unmatched)}",
+            message=f"matched={matched} created={created}",
         )
     )
     session.commit()
-    return {"matched": matched, "unmatched": unmatched}
+    return {"matched": matched, "created": created}

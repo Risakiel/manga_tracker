@@ -3,7 +3,7 @@
     <tr>
         <th></th>
         <th>Titre</th>
-        <th>Catégorie</th>
+        <th>Type</th>
         <th>Statut</th>
         <th>Chapitres (Suwayomi / MU)</th>
         <th>Retard</th>
@@ -22,6 +22,7 @@
         <td>
             <a href="/manga/{{ manga.id }}">{{ manga.title_en }}</a>
             {% if manga.needs_manual_match %}<br><small>⚠️ match manuel requis</small>{% endif %}
+            {% if manga.suwayomi_categories %}<br><small class="suwayomi-categories">{{ manga.suwayomi_categories | join(", ") }}</small>{% endif %}
         </td>
         <td>{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}</td>
         <td><span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span></td>

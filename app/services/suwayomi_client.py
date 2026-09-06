@@ -24,13 +24,22 @@ query LibraryMangas($after: Cursor) {
       author
       artist
       status
+      genre
       thumbnailUrl
       downloadCount
       chapters { totalCount }
+      categories { nodes { name } }
     }
   }
 }
 """
+
+# Suwayomi genre tags (copied from the source site) that reliably signal adult
+# content -- used to auto-classify newly-imported manga as Manga vs Pornhwa.
+# Confirmed against this user's real library: "pornhwa"/"pornwha" (137
+# occurrences), "hentai", "adulte"/"adult", "hardcore", "smut" all show up
+# exclusively on titles already tracked as Pornhwa.
+_ADULT_GENRE_KEYWORDS = {"pornhwa", "pornwha", "hentai", "adulte", "adult", "hardcore", "smut"}
 
 
 @dataclass
@@ -40,9 +49,15 @@ class SuwayomiManga:
     author: Optional[str] = None
     artist: Optional[str] = None
     status: str = ""
+    genres: list[str] = field(default_factory=list)
     thumbnail_url: Optional[str] = None
     download_count: int = 0
     chapter_total_count: int = 0
+    categories: list[str] = field(default_factory=list)
+
+    @property
+    def looks_adult(self) -> bool:
+        return any(g.strip().lower() in _ADULT_GENRE_KEYWORDS for g in self.genres)
 
 
 @dataclass
@@ -90,9 +105,11 @@ def fetch_library(client: Optional[httpx.Client] = None) -> list[SuwayomiManga]:
                         author=node.get("author"),
                         artist=node.get("artist"),
                         status=node.get("status", ""),
+                        genres=node.get("genre") or [],
                         thumbnail_url=thumbnail_url,
                         download_count=node.get("downloadCount") or 0,
                         chapter_total_count=(node.get("chapters") or {}).get("totalCount", 0),
+                        categories=[c["name"] for c in (node.get("categories") or {}).get("nodes", [])],
                     )
                 )
             page_info = connection["pageInfo"]

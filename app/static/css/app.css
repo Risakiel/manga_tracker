@@ -77,6 +77,10 @@ table.mangas td, table.mangas th {
     vertical-align: middle;
 }
 
+.suwayomi-categories {
+    color: var(--pico-muted-color);
+}
+
 .needs-match-row {
     outline: 2px solid #dc2626;
     outline-offset: -2px;

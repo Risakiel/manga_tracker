@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Suwayomi — Manga Tracker{% endblock %}
+{% block content %}
+
+<h2>Synchronisation Suwayomi</h2>
+<p>
+    Suwayomi fait foi pour la liste des mangas suivis : chaque synchronisation met à jour le nombre de
+    chapitres téléchargés et les catégories Suwayomi de tout ce qui est déjà suivi, et importe automatiquement
+    (avec une tentative de rattachement MangaUpdates) tout ce qui est nouveau dans ta bibliothèque.
+</p>
+
+<form method="post" action="/suwayomi/sync">
+    <button type="submit" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
+</form>
+{% include "_suwayomi_progress.html" %}
+
+{% if unresolved %}
+<article>
+    <h3>Récemment importés sans lien MangaUpdates ({{ unresolved | length }})</h3>
+    <p>Ces mangas viennent de Suwayomi mais n'ont pas (encore) de correspondance MangaUpdates confirmée. Ouvre leur fiche pour coller le bon lien.</p>
+    <table>
+        <thead><tr><th></th><th>Titre</th><th>Type</th><th>Chapitres Suwayomi</th><th></th></tr></thead>
+        <tbody>
+        {% for manga in unresolved %}
+        <tr class="{{ 'needs-match-row' if manga.needs_manual_match else '' }}">
+            <td>{% if manga.cover_url %}<img class="cover-thumb" src="{{ manga.cover_url }}" alt="">{% endif %}</td>
+            <td><a href="/manga/{{ manga.id }}">{{ manga.title_en }}</a> {% if manga.needs_manual_match %}<br><small>⚠️ candidats trouvés</small>{% endif %}</td>
+            <td>{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}</td>
+            <td>{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}</td>
+            <td><a href="/manga/{{ manga.id }}">Résoudre →</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% endblock %}

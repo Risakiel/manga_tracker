@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     suwayomi_password: str = ""
 
     sync_interval_hours: float = 24.0
-    suwayomi_sync_interval_hours: float = 6.0
+    suwayomi_sync_interval_hours: float = 24.0
     enable_scheduler: bool = True
 
     mangaupdates_min_request_interval_seconds: float = 1.0

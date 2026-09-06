@@ -1,0 +1,14 @@
+{% if progress.running %}
+<div id="suwayomi-progress" hx-get="/partials/suwayomi-sync-progress" hx-trigger="load delay:2s" hx-swap="outerHTML">
+    <progress value="{{ progress.done }}" max="{{ progress.total if progress.total else 1 }}"></progress>
+    Synchronisation Suwayomi en cours : {{ progress.done }} / {{ progress.total }}
+</div>
+{% else %}
+<div id="suwayomi-progress">
+    {% if progress.error %}
+    <p style="color:#f87171">{{ progress.error }}</p>
+    {% elif progress.total %}
+    <small>Dernière synchronisation : {{ progress.matched }} déjà suivi(s) mis à jour, {{ progress.created }} nouveau(x) importé(s).</small>
+    {% endif %}
+</div>
+{% endif %}

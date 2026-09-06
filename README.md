@@ -3,17 +3,23 @@
 Application de suivi de mangas/manhwas/manhwas adultes, pensée pour compléter une
 bibliothèque [Suwayomi](https://github.com/Suwayomi/Suwayomi-Server) + [Komga](https://komga.org/).
 
-- Import du fichier Excel de suivi existant (colonnes `Libraries`, `Titre Anglais`,
-  `Titre Dossier Serveur`, `MangaUpdates.com (URL)`, `Last Scan`, `Statut du Manga`).
+- Suwayomi fait foi pour la liste des mangas suivis : la synchronisation (manuelle ou
+  automatique toutes les 24h) importe tout nouveau titre de la bibliothèque, met à jour le
+  nombre de chapitres téléchargés, et copie les catégories Suwayomi (tes propres groupes
+  "À suivre"/"Terminé"/...) sur chaque manga.
+- Import initial (ou complémentaire) du fichier Excel de suivi (colonnes `Libraries`,
+  `Titre Anglais`, `Titre Dossier Serveur`, `MangaUpdates.com (URL)`, `Last Scan`, `Statut
+  du Manga`) — non-destructif, utile surtout pour le premier peuplement.
 - Synchronisation automatique avec [MangaUpdates](https://www.mangaupdates.com/) (statut,
   auteur/artiste, genres, titres alternatifs, couverture, dernier chapitre) via son API
-  publique — pas de clé requise.
+  publique — pas de clé requise. Le lien MangaUpdates est éditable à tout moment sur la
+  fiche d'un manga (utile si le rattachement automatique s'est trompé, ou pour un titre
+  fraîchement importé depuis Suwayomi qui n'en a pas encore).
 - Enrichissement complémentaire via [AniList](https://anilist.co/) quand MangaUpdates ne
   suffit pas (couverture, titres alternatifs).
-- Réconciliation périodique avec l'API GraphQL de Suwayomi : nombre de chapitres
-  réellement téléchargés, détection des séries présentes dans Suwayomi mais absentes du
-  suivi.
-- Interface web simple (FastAPI + Jinja2 + HTMX, SQLite), packagée en image Docker.
+- Interface web simple (FastAPI + Jinja2 + HTMX, SQLite), packagée en image Docker. Le
+  tableau de bord distingue le **Type** (Manga/Pornhwa, propre à cette appli) des
+  **Catégories Suwayomi** (tes groupes de bibliothèque) comme deux filtres séparés.
 
 ## Lancer en local (développement)
 
@@ -37,7 +43,7 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 | `SUWAYOMI_URL` | URL de base de ton instance Suwayomi (sans `/api/graphql`) | vide (sync Suwayomi désactivée) |
 | `SUWAYOMI_USERNAME` / `SUWAYOMI_PASSWORD` | Si Basic Auth activé sur Suwayomi | vide |
 | `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates | 24 |
-| `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation Suwayomi | 6 |
+| `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi | 24 |
 | `ENABLE_SCHEDULER` | Désactive les jobs automatiques (sync manuelle uniquement) | true |
 
 Si ta version de Suwayomi expose des noms de champs GraphQL différents de ceux utilisés
@@ -56,7 +62,9 @@ ou simplement l'explorateur GraphQL intégré à Suwayomi) permettra d'ajuster l
    - Ajuster `SUWAYOMI_URL` avec l'IP/port de ton conteneur Suwayomi.
    - `docker compose up -d`.
 3. Le volume `./data` contient la base SQLite — à sauvegarder comme le reste de ton appdata.
-4. Import initial : ouvrir `http://<unraid>:8000/import` et uploader ton fichier Excel.
+4. Peuplement initial : soit importer l'Excel existant (`/import`), soit directement lancer
+   une synchronisation Suwayomi (`/suwayomi`, bouton "Synchroniser maintenant") qui importe
+   tout depuis la bibliothèque — les deux sont non-destructifs et peuvent se combiner.
 
 ## Attribution
 
@@ -76,10 +84,11 @@ app/
 ├── services/
 │   ├── mangaupdates_client.py  # Décodage URL -> series_id, fetch, search fallback
 │   ├── anilist_client.py        # Enrichissement complémentaire
-│   ├── suwayomi_client.py        # GraphQL: bibliothèque + nb chapitres téléchargés
+│   ├── suwayomi_client.py        # GraphQL: bibliothèque, genres, catégories, chapitres
 │   ├── excel_importer.py         # Import non-destructif de l'Excel
 │   ├── matching.py                # Normalisation + fuzzy match (rapidfuzz)
-│   ├── sync_service.py             # Orchestration des sources externes
+│   ├── sync_service.py             # Orchestration : reconciliation/auto-import Suwayomi,
+│   │                                 sync MangaUpdates, enrichissement AniList
 │   └── scheduler.py                 # Jobs périodiques (APScheduler)
 ├── templates/                       # Jinja2 + HTMX + Pico.css (vendored, pas de CDN)
 └── static/

@@ -56,6 +56,7 @@ class Manga(SQLModel, table=True):
 
     suwayomi_manga_id: Optional[int] = Field(default=None, index=True)
     suwayomi_chapter_count: Optional[int] = None
+    suwayomi_categories_json: str = Field(default="[]", sa_column=Column(Text))
 
     author: str = ""
     artist: str = ""
@@ -77,6 +78,14 @@ class Manga(SQLModel, table=True):
     @genres.setter
     def genres(self, value: list[str]) -> None:
         self.genres_json = json.dumps(value)
+
+    @property
+    def suwayomi_categories(self) -> list[str]:
+        return json.loads(self.suwayomi_categories_json or "[]")
+
+    @suwayomi_categories.setter
+    def suwayomi_categories(self, value: list[str]) -> None:
+        self.suwayomi_categories_json = json.dumps(value)
 
     @property
     def alt_titles(self) -> list[str]:

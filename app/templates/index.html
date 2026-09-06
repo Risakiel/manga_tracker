@@ -15,9 +15,15 @@
     <div class="grid">
         <input type="search" id="q" name="q" placeholder="Rechercher un titre..." value="{{ filters.q }}">
         <select name="category">
-            <option value="">Toutes catégories</option>
+            <option value="">Tous types</option>
             <option value="manga" {{ "selected" if filters.category == "manga" }}>Manga</option>
             <option value="pornhwa" {{ "selected" if filters.category == "pornhwa" }}>Pornhwa</option>
+        </select>
+        <select name="suwayomi_category">
+            <option value="">Toutes catégories</option>
+            {% for c in suwayomi_categories %}
+            <option value="{{ c }}" {{ "selected" if filters.suwayomi_category == c }}>{{ c }}</option>
+            {% endfor %}
         </select>
         <select name="status">
             <option value="">Tous statuts</option>
@@ -40,7 +46,9 @@
         </button>
     </form>
     <form method="post" action="/suwayomi/sync" style="margin:0">
-        <button type="submit" class="secondary">🔗 Resync Suwayomi</button>
+        <button type="submit" class="secondary" {{ "disabled" if suwayomi_progress.running }}>
+            🔗 Synchroniser Suwayomi
+        </button>
     </form>
 </div>
 {% include "_sync_progress.html" %}

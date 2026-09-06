@@ -12,8 +12,19 @@
         <h2>{{ manga.title_en }}</h2>
         <p>
             <span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span>
-            &nbsp;{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}
         </p>
+        <form method="post" action="/manga/{{ manga.id }}/category" style="display:flex; align-items:center; gap:0.5rem; max-width:16rem">
+            <label style="flex:1; margin:0">
+                Type
+                <select name="category" onchange="this.form.requestSubmit()">
+                    <option value="manga" {{ "selected" if manga.category.value == "manga" }}>Manga</option>
+                    <option value="pornhwa" {{ "selected" if manga.category.value == "pornhwa" }}>Pornhwa</option>
+                </select>
+            </label>
+        </form>
+        {% if manga.suwayomi_categories %}
+        <p><strong>Catégories Suwayomi :</strong> {{ manga.suwayomi_categories | join(", ") }}</p>
+        {% endif %}
         <p><strong>Dossier serveur :</strong> {{ manga.server_folder }}</p>
         <p><strong>Auteur :</strong> {{ manga.author or "?" }} &nbsp; <strong>Artiste :</strong> {{ manga.artist or "?" }}</p>
         <p><strong>Genres :</strong> {{ manga.genres | join(", ") }}</p>
@@ -29,7 +40,9 @@
             </label>
             <button type="submit" class="secondary">Enregistrer le lien + resynchroniser</button>
         </form>
+        {% if manga.mangaupdates_url %}
         <p><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir sur MangaUpdates ↗</a></p>
+        {% endif %}
         <p><small>Dernière sync : {{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</small></p>
         {% if manga.sync_error %}<p style="color:#f87171">{{ manga.sync_error }}</p>{% endif %}
 
