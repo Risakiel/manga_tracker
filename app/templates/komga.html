@@ -11,6 +11,13 @@
     titres alternatifs, lien MangaUpdates) — uniquement quand Komga n'a rien de saisi à cet
     endroit, jamais en écrasant une valeur existante.
 </p>
+<p>
+    Les catégories Suwayomi de chaque manga (ex. "Terminé", "Scans manquants") sont en plus
+    poussées comme tags Komga au format <code>Suwayomi: &lt;catégorie&gt;</code>, tenus à jour à
+    chaque synchronisation (contrairement aux autres champs, ceux-ci sont bien remplacés pour
+    suivre le statut Suwayomi actuel) — filtrables dans Komga comme les genres, et donc aussi
+    dans Komelia.
+</p>
 
 {% if not komga_configured %}
 <article style="color:#f87171">KOMGA_URL n'est pas configuré — voir le README pour l'activer.</article>

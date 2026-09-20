@@ -334,6 +334,92 @@ def test_komga_sync_pushed_alternate_titles_have_a_non_blank_label(monkeypatch):
     assert all(entry["label"] for entry in patch["alternateTitles"])
 
 
+def test_komga_sync_pushes_suwayomi_categories_as_prefixed_tags(monkeypatch):
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Tagged Title",
+        server_folder="Tagged Title",
+        mangaupdates_url="",
+    )
+    manga.suwayomi_categories = ["Terminé"]
+    session.add(manga)
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(
+        id="series-7", library_id="lib-manga", name="Tagged Title", books_count=1, books_read_count=0, tags=[]
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    sync_komga_library(session)
+
+    assert len(updates) == 1
+    assert updates[0][1]["tags"] == ["Suwayomi: Terminé"]
+
+
+def test_komga_sync_keeps_non_suwayomi_tags_while_updating_the_rest(monkeypatch):
+    # The Suwayomi category can change over time (e.g. "En cours" -> "Terminé"),
+    # so unlike genres/summary this tag subset is replaced every run -- but a
+    # tag the user (or another tool) added by hand must survive untouched.
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Retagged Title",
+        server_folder="Retagged Title",
+        mangaupdates_url="",
+    )
+    manga.suwayomi_categories = ["Terminé"]
+    session.add(manga)
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(
+        id="series-8",
+        library_id="lib-manga",
+        name="Retagged Title",
+        books_count=1,
+        books_read_count=0,
+        tags=["Suwayomi: En cours", "My Own Tag"],
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    sync_komga_library(session)
+
+    assert len(updates) == 1
+    assert sorted(updates[0][1]["tags"]) == ["My Own Tag", "Suwayomi: Terminé"]
+
+
+def test_komga_sync_skips_tags_when_locked(monkeypatch):
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Locked Tags Title",
+        server_folder="Locked Tags Title",
+        mangaupdates_url="",
+    )
+    manga.suwayomi_categories = ["Terminé"]
+    session.add(manga)
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(
+        id="series-9",
+        library_id="lib-manga",
+        name="Locked Tags Title",
+        books_count=1,
+        books_read_count=0,
+        tags=[],
+        tags_locked=True,
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    result = sync_komga_library(session)
+
+    assert result["pushed"] == 0
+    assert updates == []
+
+
 @respx.mock
 def test_komga_sync_push_goes_through_a_real_authenticated_client(monkeypatch):
     """End-to-end regression test for a real bug: sync_komga_library once

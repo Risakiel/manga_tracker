@@ -19,6 +19,14 @@ from app.services.library_client import CATEGORY_DIR_NAMES
 
 MANGAUPDATES_LINK_LABEL = "MangaUpdates"
 
+# Prefix marking which of a series' Komga tags mirror its Suwayomi
+# categories (e.g. "Suwayomi: Terminé"), so a live sync can replace exactly
+# that subset on every run without touching tags added by the user or any
+# other tool -- unlike genres/summary/alt titles, this is a live status, not
+# static bio info filled once. Komga's tag filter (web UI and any client
+# reading the same API, e.g. Komelia) then lets series be browsed by it.
+SUWAYOMI_TAG_PREFIX = "Suwayomi: "
+
 
 class KomgaUnavailable(Exception):
     def __init__(self, reason: str):
@@ -35,11 +43,13 @@ class KomgaSeries:
     books_read_count: int = 0
     summary: str = ""
     genres: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     alternate_titles: list[str] = field(default_factory=list)
     mangaupdates_url: Optional[str] = None
     raw_links: list[dict] = field(default_factory=list)
     summary_locked: bool = False
     genres_locked: bool = False
+    tags_locked: bool = False
     links_locked: bool = False
     alternate_titles_locked: bool = False
 
@@ -112,11 +122,13 @@ def _parse_series(node: dict) -> KomgaSeries:
         books_read_count=node.get("booksReadCount") or 0,
         summary=metadata.get("summary") or "",
         genres=metadata.get("genres") or [],
+        tags=metadata.get("tags") or [],
         alternate_titles=[t["title"] for t in (metadata.get("alternateTitles") or []) if t.get("title")],
         mangaupdates_url=mu_url,
         raw_links=metadata.get("links") or [],
         summary_locked=bool(metadata.get("summaryLock")),
         genres_locked=bool(metadata.get("genresLock")),
+        tags_locked=bool(metadata.get("tagsLock")),
         links_locked=bool(metadata.get("linksLock")),
         alternate_titles_locked=bool(metadata.get("alternateTitlesLock")),
     )

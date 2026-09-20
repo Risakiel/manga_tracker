@@ -45,6 +45,8 @@ SAMPLE_SERIES_NODE = {
         "summaryLock": False,
         "genres": ["romance"],
         "genresLock": False,
+        "tags": ["Suwayomi: Terminé"],
+        "tagsLock": False,
         "alternateTitles": [{"label": "", "title": "Alt Title"}],
         "alternateTitlesLock": False,
         "links": [{"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/0i8pz41/100-personal"}],
@@ -70,6 +72,7 @@ def test_fetch_series_parses_metadata_and_paginates(monkeypatch):
     assert first.books_read_count == 5
     assert first.summary == "A summary."
     assert first.genres == ["romance"]
+    assert first.tags == ["Suwayomi: Terminé"]
     assert first.alternate_titles == ["Alt Title"]
     assert first.mangaupdates_url == "https://www.mangaupdates.com/series/0i8pz41/100-personal"
 

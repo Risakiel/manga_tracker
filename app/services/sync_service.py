@@ -267,7 +267,14 @@ def sync_server_folders(
 def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> bool:
     """Non-destructive enrichment: only fills Komga fields that are genuinely
     empty and unlocked there -- never overwrites anything already set,
-    whether by the user or another tool (e.g. komf)."""
+    whether by the user or another tool (e.g. komf).
+
+    Tags are the one exception: Suwayomi categories are a live status (e.g.
+    "Terminé" / "scans manquants"), not static bio info, so the
+    "Suwayomi: <category>" tags are actively kept in sync with Suwayomi's
+    current assignment on every run -- replacing only that subset so any
+    other tag (user- or tool-added) survives untouched.
+    """
     patch: dict = {}
     if manga.description and not series.summary and not series.summary_locked:
         patch["summary"] = manga.description
@@ -284,6 +291,12 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
         patch["links"] = series.raw_links + [
             {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
         ]
+    if not series.tags_locked:
+        other_tags = [t for t in series.tags if not t.startswith(komga_client.SUWAYOMI_TAG_PREFIX)]
+        suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
+        new_tags = other_tags + suwayomi_tags
+        if sorted(new_tags) != sorted(series.tags):
+            patch["tags"] = new_tags
 
     if not patch:
         return False
@@ -298,9 +311,12 @@ def sync_komga_library(
     session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict:
     """Reconcile tracked mangas against Komga (the actual reading library):
-    pulls real read progress (booksReadCount vs booksCount), and pushes back
+    pulls real read progress (booksReadCount vs booksCount), pushes back
     MangaUpdates-sourced metadata Komga is missing (summary/genres/alt
-    titles/MangaUpdates link) -- only filling gaps, never overwriting.
+    titles/MangaUpdates link) -- only filling gaps, never overwriting -- and
+    mirrors each manga's Suwayomi categories onto Komga as "Suwayomi: <category>"
+    tags, filterable in Komga's own UI and any client reading the same API
+    (e.g. Komelia).
 
     Matching priority: MangaUpdates series_id (both sides usually already
     link to it) > exact folder-name match within the same category > fuzzy
