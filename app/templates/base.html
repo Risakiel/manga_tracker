@@ -4,11 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Manga Tracker{% endblock %}</title>
-    <link rel="icon" href="/static/img/logo.svg">
-    <link rel="stylesheet" href="/static/css/pico.min.css">
-    <link rel="stylesheet" href="/static/css/app.css">
-    <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/alpine.min.js" defer></script>
+    <link rel="icon" href="/static/img/logo.svg?v={{ static_version }}">
+    <link rel="stylesheet" href="/static/css/pico.min.css?v={{ static_version }}">
+    <link rel="stylesheet" href="/static/css/app.css?v={{ static_version }}">
+    <script src="/static/js/htmx.min.js?v={{ static_version }}"></script>
+    <script src="/static/js/alpine.min.js?v={{ static_version }}" defer></script>
 </head>
 {% set admin_paths = ["/config", "/import", "/suwayomi", "/komga", "/logs"] %}
 {% set in_admin = request.url.path in admin_paths %}
@@ -17,7 +17,7 @@
 <div class="mt-shell">
     <aside class="mt-sidebar" :class="{ 'mt-open': sidebarOpen }">
         <div class="mt-logo">
-            <img src="/static/img/logo.svg" alt="" class="mt-logo-icon">
+            <img src="/static/img/logo.svg?v={{ static_version }}" alt="" class="mt-logo-icon">
             <span class="mt-wordmark"><span class="accent">Manga</span>Tracker</span>
         </div>
         <nav class="mt-nav" aria-label="Navigation principale">

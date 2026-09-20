@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,10 @@ from app.services.sync_service import (
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+# Cache-busts /static/* URLs on every process start so a fresh Docker image
+# (new CSS/JS) doesn't get served from a browser's stale cache of the old
+# files at the same path -- Unraid restarts the container on every update.
+templates.env.globals["static_version"] = str(int(time.time()))
 
 # In-memory progress for the bulk background jobs -- all take several
 # minutes (one HTTP request per manga, throttled), so the dashboard polls
