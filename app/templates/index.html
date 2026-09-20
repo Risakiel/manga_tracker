@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Tableau de bord — Manga Tracker{% endblock %}
+{% block page_title %}Tableau de bord{% endblock %}
 {% block content %}
 
 {% set no_filter = not (filters.status or filters.needs_manual_match == "true" or filters.behind == "true") %}

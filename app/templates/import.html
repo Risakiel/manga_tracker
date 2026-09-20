@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Import Excel — Manga Tracker{% endblock %}
+{% block page_eyebrow %}<p class="mt-eyebrow">Configuration</p>{% endblock %}
+{% block page_title %}Import Excel{% endblock %}
 {% block content %}
 
-<h2>Import du fichier Excel</h2>
 <p>Le fichier doit contenir une feuille <code>LISTS</code> avec les colonnes : Libraries, Titre Anglais, Titre Dossier Serveur, MangaUpdates.com (URL), Last Scan, Statut du Manga.</p>
 <p>L'import est non-destructif : les mangas déjà connus (par URL MangaUpdates ou dossier serveur) sont mis à jour sans écraser les données déjà synchronisées (auteur, genres, couverture...).</p>
 

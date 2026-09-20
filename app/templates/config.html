@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Configuration — Manga Tracker{% endblock %}
+{% block page_title %}Configuration{% endblock %}
+{% block content %}
+
+<p>Outils de maintenance de la solution : import de données, synchronisation avec les sources externes et historique des événements.</p>
+
+<div class="config-grid">
+    <a class="config-card" href="/import">
+        <h3>📥 Import Excel</h3>
+        <p>Importer ou mettre à jour la liste des mangas suivis depuis un fichier Excel.</p>
+    </a>
+    <a class="config-card" href="/suwayomi">
+        <h3>🔗 Suwayomi</h3>
+        <p>Synchroniser la bibliothèque Suwayomi et résoudre les mangas non liés à MangaUpdates.</p>
+    </a>
+    <a class="config-card" href="/komga">
+        <h3>📖 Komga</h3>
+        <p>Relier les mangas suivis à leur fiche Komga et pousser les métadonnées manquantes.</p>
+    </a>
+    <a class="config-card" href="/logs">
+        <h3>🕒 Historique</h3>
+        <p>Consulter le journal des synchronisations (succès, erreurs, mangas concernés).</p>
+    </a>
+</div>
+
+{% endblock %}

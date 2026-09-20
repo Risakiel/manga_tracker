@@ -4,29 +4,58 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Manga Tracker{% endblock %}</title>
+    <link rel="icon" href="/static/img/logo.svg">
     <link rel="stylesheet" href="/static/css/pico.min.css">
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/alpine.min.js" defer></script>
 </head>
-<body>
-<nav class="container-fluid">
-    <ul>
-        <li><strong>📚 Manga Tracker</strong></li>
-    </ul>
-    <ul>
-        <li><a href="/">Tableau de bord</a></li>
-        <li><a href="/import">Import Excel</a></li>
-        <li><a href="/suwayomi">Suwayomi</a></li>
-        <li><a href="/komga">Komga</a></li>
-        <li><a href="/logs">Historique</a></li>
-    </ul>
-</nav>
-<main class="container-fluid">
-    {% if flash %}
-    <article class="flash">{{ flash }}</article>
-    {% endif %}
-    {% block content %}{% endblock %}
-</main>
+{% set admin_paths = ["/config", "/import", "/suwayomi", "/komga", "/logs"] %}
+{% set in_admin = request.url.path in admin_paths %}
+{% set in_home = request.url.path == "/" or request.url.path.startswith("/manga/") %}
+<body x-data="{ sidebarOpen: false }">
+<div class="mt-shell">
+    <aside class="mt-sidebar" :class="{ 'mt-open': sidebarOpen }">
+        <div class="mt-logo">
+            <img src="/static/img/logo.svg" alt="" class="mt-logo-icon">
+            <span class="mt-wordmark"><span class="accent">Manga</span>Tracker</span>
+        </div>
+        <nav class="mt-nav" aria-label="Navigation principale">
+            <a href="/" class="mt-nav-item {{ 'active' if in_home }}">
+                <span class="icon">🏠</span><span>Accueil</span>
+            </a>
+            <details class="mt-nav-group" {{ "open" if in_admin }}>
+                <summary class="mt-nav-item {{ 'active' if in_admin }}">
+                    <span class="icon">⚙️</span><span>Configuration</span>
+                </summary>
+                <div class="mt-nav-sub">
+                    <a href="/config" class="{{ 'active' if request.url.path == '/config' }}">Vue d'ensemble</a>
+                    <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">📥 Import Excel</a>
+                    <a href="/suwayomi" class="{{ 'active' if request.url.path == '/suwayomi' }}">🔗 Suwayomi</a>
+                    <a href="/komga" class="{{ 'active' if request.url.path == '/komga' }}">📖 Komga</a>
+                    <a href="/logs" class="{{ 'active' if request.url.path == '/logs' }}">🕒 Historique</a>
+                </div>
+            </details>
+        </nav>
+        <div class="mt-sidebar-footer">Manga Tracker</div>
+    </aside>
+    <div class="mt-sidebar-backdrop" :class="{ 'mt-open': sidebarOpen }" @click="sidebarOpen = false"></div>
+
+    <div class="mt-main">
+        <header class="mt-topbar">
+            <button type="button" class="mt-mobile-toggle" @click="sidebarOpen = !sidebarOpen" aria-label="Ouvrir le menu">☰</button>
+            <div>
+                {% block page_eyebrow %}{% endblock %}
+                <h1>{% block page_title %}{% endblock %}</h1>
+            </div>
+        </header>
+        <main class="mt-content">
+            {% if flash %}
+            <article class="flash">{{ flash }}</article>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
 </body>
 </html>

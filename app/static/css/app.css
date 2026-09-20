@@ -1,3 +1,294 @@
+/* ==========================================================================
+   Theme tokens — palette & proportions adapted from JellyGlance's dashboard,
+   swapping its purple accent for our orange (#B0531A).
+   ========================================================================== */
+:root {
+    --primary-color: #B0531A;
+    --primary-rgb: 176, 83, 26;
+    --primary-light-color: #cc8f6a;
+    --primary-dark-color: #7b3a12;
+
+    --background-color: #0b0d12;
+    --secondary-background-color: #131820;
+    --tertiary-background-color: #1b212b;
+    --surface-color: rgba(20, 25, 33, 0.9);
+    --surface-border-color: rgba(255, 255, 255, 0.11);
+
+    --text-color: #f8fafc;
+    --muted-text-color: #b3bfce;
+    --subtle-text-color: #94a3b8;
+
+    --mt-font-size: clamp(12.5px, 0.1vw + 12.1px, 13px);
+    --mt-sidebar-width: clamp(12.75rem, 14vw, 13.75rem);
+
+    /* Re-point Pico's own variables at our tokens so every Pico component
+       (buttons, forms, tables, cards) picks up the theme automatically. */
+    --pico-background-color: var(--background-color);
+    --pico-color: var(--text-color);
+    --pico-h1-color: var(--text-color);
+    --pico-h2-color: var(--text-color);
+    --pico-muted-color: var(--muted-text-color);
+    --pico-muted-border-color: var(--surface-border-color);
+    --pico-card-background-color: var(--secondary-background-color);
+    --pico-card-sectioning-background-color: var(--tertiary-background-color);
+    --pico-card-border-color: var(--surface-border-color);
+    --pico-table-border-color: var(--surface-border-color);
+    --pico-form-element-background-color: var(--tertiary-background-color);
+    --pico-form-element-border-color: var(--surface-border-color);
+    --pico-form-element-color: var(--text-color);
+    --pico-form-element-focus-color: var(--primary-color);
+    --pico-dropdown-background-color: var(--tertiary-background-color);
+    --pico-primary: var(--primary-color);
+    --pico-primary-background: var(--primary-color);
+    --pico-primary-hover: var(--primary-dark-color);
+    --pico-primary-hover-background: var(--primary-dark-color);
+    --pico-primary-focus: rgba(var(--primary-rgb), 0.35);
+    --pico-primary-inverse: #fff;
+    --pico-secondary-focus: rgba(255, 255, 255, 0.15);
+}
+
+html {
+    font-size: var(--mt-font-size);
+}
+
+body {
+    margin: 0;
+    background: var(--background-color);
+    color: var(--text-color);
+}
+
+/* ==========================================================================
+   Shell layout: fixed sidebar (à la JellyGlance) + topbar + content
+   ========================================================================== */
+.mt-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.mt-sidebar {
+    width: var(--mt-sidebar-width);
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--secondary-background-color);
+    border-right: 1px solid var(--surface-border-color);
+    padding: 1rem 0.75rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.mt-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.4rem 1.4rem;
+}
+
+.mt-logo-icon {
+    width: 32px;
+    height: 32px;
+    flex: none;
+}
+
+.mt-wordmark {
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--text-color);
+}
+
+.mt-wordmark .accent {
+    color: var(--primary-color);
+}
+
+.mt-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1;
+}
+
+.mt-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.6rem;
+    color: var(--muted-text-color);
+    text-decoration: none;
+    font-size: 0.92rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.mt-nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
+}
+
+.mt-nav-item.active {
+    background: rgba(var(--primary-rgb), 0.18);
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.mt-nav-item .icon {
+    width: 1.2em;
+    text-align: center;
+    flex: none;
+}
+
+details.mt-nav-group summary {
+    list-style: none;
+}
+
+details.mt-nav-group summary::-webkit-details-marker {
+    display: none;
+}
+
+details.mt-nav-group summary::after {
+    content: "\203A";
+    margin-left: auto;
+    transform: rotate(90deg);
+    transition: transform 0.15s ease;
+    opacity: 0.6;
+}
+
+details.mt-nav-group[open] summary::after {
+    transform: rotate(270deg);
+}
+
+.mt-nav-sub {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.2rem 0 0.5rem 1.95rem;
+}
+
+.mt-nav-sub a {
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.5rem;
+    color: var(--subtle-text-color);
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+
+.mt-nav-sub a:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
+}
+
+.mt-nav-sub a.active {
+    background: rgba(var(--primary-rgb), 0.18);
+    color: var(--primary-light-color);
+    font-weight: 600;
+}
+
+.mt-sidebar-footer {
+    font-size: 0.72rem;
+    color: var(--subtle-text-color);
+    padding: 0.75rem 0.5rem 0.25rem;
+    border-top: 1px solid var(--surface-border-color);
+    margin-top: 0.5rem;
+}
+
+.mt-sidebar-backdrop {
+    display: none;
+}
+
+.mt-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.mt-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.1rem 1.75rem;
+    border-bottom: 1px solid var(--surface-border-color);
+    position: sticky;
+    top: 0;
+    background: rgba(11, 13, 18, 0.85);
+    backdrop-filter: blur(6px);
+    z-index: 5;
+}
+
+.mt-topbar h1 {
+    margin: 0;
+    font-size: 1.35rem;
+}
+
+.mt-eyebrow {
+    margin: 0 0 0.15rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--primary-light-color);
+}
+
+.mt-mobile-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+}
+
+.mt-content {
+    padding: 1.5rem 1.75rem 3rem;
+    flex: 1;
+}
+
+@media (max-width: 860px) {
+    .mt-sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 20;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+    }
+
+    .mt-sidebar.mt-open {
+        transform: translateX(0);
+        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .mt-sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 15;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+
+    .mt-sidebar-backdrop.mt-open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .mt-mobile-toggle {
+        display: inline-flex;
+    }
+
+    .mt-topbar {
+        padding-left: 1rem;
+    }
+}
+
+/* ==========================================================================
+   Page-level components
+   ========================================================================== */
 .flash {
     background: var(--pico-ins-color);
     color: var(--pico-contrast);
@@ -40,20 +331,21 @@
 
 .stat-card {
     padding: 0.5rem 1rem;
-    border: 1px solid var(--pico-muted-border-color);
-    border-radius: var(--pico-border-radius);
+    background: var(--secondary-background-color);
+    border: 1px solid var(--surface-border-color);
+    border-radius: 0.7rem;
     color: var(--pico-color);
     text-decoration: none;
     cursor: pointer;
 }
 
 .stat-card:hover {
-    border-color: var(--pico-primary);
+    border-color: var(--primary-color);
 }
 
 .stat-card.active {
-    border-color: var(--pico-primary);
-    background: color-mix(in srgb, var(--pico-primary) 18%, transparent);
+    border-color: var(--primary-color);
+    background: rgba(var(--primary-rgb), 0.18);
 }
 
 .badge {
@@ -84,4 +376,35 @@ table.mangas td, table.mangas th {
 .needs-match-row {
     outline: 2px solid #dc2626;
     outline-offset: -2px;
+}
+
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.config-card {
+    display: block;
+    padding: 1.25rem;
+    background: var(--secondary-background-color);
+    border: 1px solid var(--surface-border-color);
+    border-radius: 0.9rem;
+    color: var(--pico-color);
+    text-decoration: none;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.config-card:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.config-card h3 {
+    margin-bottom: 0.35rem;
+}
+
+.config-card p {
+    margin: 0;
+    color: var(--pico-muted-color);
 }

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ manga.title_en }} — Manga Tracker{% endblock %}
+{% block page_title %}{{ manga.title_en }}{% endblock %}
 {% block content %}
 
 <a href="/" class="detail-back-link" data-discover="true">&larr; Retour</a>
@@ -9,7 +10,6 @@
         {% if manga.cover_url %}<img class="detail-cover" src="{{ manga.cover_url }}" alt="">{% endif %}
     </div>
     <div>
-        <h2>{{ manga.title_en }}</h2>
         <p>
             <span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span>
         </p>

@@ -382,6 +382,11 @@ def komga_page(request: Request, session: Session = Depends(get_session)):
     )
 
 
+@router.get("/config", response_class=HTMLResponse)
+def config_page(request: Request):
+    return templates.TemplateResponse(request, "config.html", {})
+
+
 @router.get("/import", response_class=HTMLResponse)
 def import_page(request: Request):
     return templates.TemplateResponse(request, "import.html", {"summary": None})
