@@ -29,6 +29,7 @@ class SyncSource(str, Enum):
     anilist = "anilist"
     suwayomi = "suwayomi"
     komga = "komga"
+    library = "library"
     excel = "excel"
 
 

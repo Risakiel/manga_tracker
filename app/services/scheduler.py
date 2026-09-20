@@ -4,7 +4,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.database import session_scope
-from app.services.sync_service import sync_all_mangaupdates, sync_komga_library, sync_suwayomi_library
+from app.services import library_client
+from app.services.sync_service import (
+    sync_all_mangaupdates,
+    sync_komga_library,
+    sync_server_folders,
+    sync_suwayomi_library,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +33,12 @@ def _run_komga_sync() -> None:
     with session_scope() as session:
         result = sync_komga_library(session)
         logger.info("scheduled Komga sync done: %s", result)
+
+
+def _run_library_sync() -> None:
+    with session_scope() as session:
+        result = sync_server_folders(session)
+        logger.info("scheduled server-folders sync done: %s", result)
 
 
 def start_scheduler() -> BackgroundScheduler | None:
@@ -60,13 +72,24 @@ def start_scheduler() -> BackgroundScheduler | None:
             id="komga_sync",
             next_run_time=None,
         )
+    if library_client.is_mounted():
+        scheduler.add_job(
+            _run_library_sync,
+            "interval",
+            hours=settings.library_sync_interval_hours,
+            id="library_sync",
+            next_run_time=None,
+        )
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "scheduler started: mangaupdates every %sh, suwayomi every %sh, komga %s",
+        "scheduler started: mangaupdates every %sh, suwayomi every %sh, komga %s, server-folders %s",
         settings.sync_interval_hours,
         settings.suwayomi_sync_interval_hours,
         f"every {settings.komga_sync_interval_hours}h" if settings.komga_url else "disabled (no KOMGA_URL)",
+        f"every {settings.library_sync_interval_hours}h"
+        if library_client.is_mounted()
+        else "disabled (NAS not mounted)",
     )
     return scheduler
 

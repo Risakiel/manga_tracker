@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     sync_interval_hours: float = 24.0
     suwayomi_sync_interval_hours: float = 24.0
     komga_sync_interval_hours: float = 24.0
+    library_sync_interval_hours: float = 24.0
     enable_scheduler: bool = True
 
     mangaupdates_min_request_interval_seconds: float = 1.0

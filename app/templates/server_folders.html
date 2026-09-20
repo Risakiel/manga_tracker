@@ -21,11 +21,13 @@
     <span class="stat-card {{ 'active' if mismatches }}"><strong>{{ mismatches | length }}</strong> dossier(s) à corriger</span>
 </div>
 
-{% if mismatches %}
-<form method="post" action="/server-folders/apply-all" style="margin-bottom:1rem">
-    <button type="submit" {{ "disabled" if not applicable }}>✅ Appliquer toutes les suggestions ({{ applicable | length }})</button>
+<form method="post" action="/server-folders/sync" style="margin-bottom:0.5rem">
+    <button type="submit" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
 </form>
+<p><small>Synchronisation automatique toutes les {{ sync_interval_hours | int }}h (réglable via <code>LIBRARY_SYNC_INTERVAL_HOURS</code>).</small></p>
+{% include "_server_folders_progress.html" %}
 
+{% if mismatches %}
 <table>
     <thead><tr><th>Manga</th><th>Dossier actuel</th><th>Dossier trouvé sur le NAS</th><th></th></tr></thead>
     <tbody>

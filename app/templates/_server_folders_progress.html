@@ -1,0 +1,14 @@
+{% if progress.running %}
+<div id="server-folders-progress" hx-get="/partials/server-folders-sync-progress" hx-trigger="load delay:2s" hx-swap="outerHTML">
+    <progress value="{{ progress.done }}" max="{{ progress.total if progress.total else 1 }}"></progress>
+    Synchronisation des dossiers en cours : {{ progress.done }} / {{ progress.total }}
+</div>
+{% else %}
+<div id="server-folders-progress">
+    {% if progress.error %}
+    <p style="color:#f87171">{{ progress.error }}</p>
+    {% elif progress.total %}
+    <small>Dernière synchronisation : {{ progress.checked }} dossier(s) vérifié(s), {{ progress.matched }} corrigé(s), {{ progress.unmatched }} sans correspondance.</small>
+    {% endif %}
+</div>
+{% endif %}

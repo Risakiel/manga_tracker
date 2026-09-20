@@ -20,6 +20,7 @@ from app.services.sync_service import (
     enrich_with_anilist,
     sync_komga_library,
     sync_manga_with_mangaupdates,
+    sync_server_folders,
     sync_suwayomi_library,
 )
 
@@ -43,6 +44,15 @@ _komga_sync_progress = {
     "matched": 0,
     "unmatched": 0,
     "pushed": 0,
+    "error": None,
+}
+_library_sync_progress = {
+    "running": False,
+    "total": 0,
+    "done": 0,
+    "checked": 0,
+    "matched": 0,
+    "unmatched": 0,
     "error": None,
 }
 
@@ -451,6 +461,8 @@ def server_folders_page(request: Request, session: Session = Depends(get_session
             "mounted": mounted,
             "library_root": str(settings.library_root),
             "rows": rows,
+            "sync_interval_hours": settings.library_sync_interval_hours,
+            "progress": _library_sync_progress,
             "flash": request.query_params.get("flash"),
         },
     )
@@ -467,21 +479,35 @@ def server_folders_apply(manga_id: int, folder: str = Form(...), session: Sessio
     return RedirectResponse("/server-folders?flash=Dossier+mis+à+jour", status_code=303)
 
 
-@router.post("/server-folders/apply-all")
-def server_folders_apply_all(session: Session = Depends(get_session)):
-    folders_by_category = {c: library_client.list_folders(c) for c in Category}
-    mangas = session.exec(select(Manga)).all()
-    updated = 0
-    for manga in mangas:
-        folders = folders_by_category[manga.category]
-        if manga.server_folder in folders:
-            continue
-        suggestion = library_client.suggest_folder(manga.title_en, manga.category, folders=folders)
-        if suggestion:
-            manga.server_folder = suggestion
-            manga.updated_at = datetime.now(timezone.utc)
-            session.add(manga)
-            updated += 1
-    if updated:
-        session.commit()
-    return RedirectResponse(f"/server-folders?flash={updated}+dossier(s)+mis+à+jour", status_code=303)
+@router.post("/server-folders/sync")
+def server_folders_sync(background_tasks: BackgroundTasks):
+    from app.database import session_scope
+
+    if _library_sync_progress["running"]:
+        return RedirectResponse("/server-folders?flash=Une+synchronisation+est+déjà+en+cours...", status_code=303)
+
+    def _job():
+        _library_sync_progress.update(running=True, total=0, done=0, checked=0, matched=0, unmatched=0, error=None)
+
+        def _on_progress(done: int, total: int) -> None:
+            _library_sync_progress.update(done=done, total=total)
+
+        try:
+            with session_scope() as session:
+                result = sync_server_folders(session, progress_callback=_on_progress)
+                _library_sync_progress["checked"] = result.get("checked", 0)
+                _library_sync_progress["matched"] = result.get("matched", 0)
+                _library_sync_progress["unmatched"] = result.get("unmatched", 0)
+                _library_sync_progress["error"] = result.get("error")
+        finally:
+            _library_sync_progress["running"] = False
+
+    background_tasks.add_task(_job)
+    return RedirectResponse(
+        "/server-folders?flash=Synchronisation+des+dossiers+lancée+en+arrière-plan...", status_code=303
+    )
+
+
+@router.get("/partials/server-folders-sync-progress", response_class=HTMLResponse)
+def server_folders_sync_progress_partial(request: Request):
+    return templates.TemplateResponse(request, "_server_folders_progress.html", {"progress": _library_sync_progress})

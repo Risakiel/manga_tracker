@@ -12,6 +12,7 @@ from typing import Callable, Optional
 import httpx
 from sqlmodel import Session, select
 
+from app.config import settings
 from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
 from app.services import anilist_client, komga_client, library_client, mangaupdates_client, suwayomi_client
 from app.services.matching import best_match, normalize_title
@@ -213,6 +214,54 @@ def sync_suwayomi_library(
     )
     session.commit()
     return {"matched": matched, "created": created}
+
+
+def sync_server_folders(
+    session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
+) -> dict:
+    """Rescans the NAS library and auto-fixes any tracked manga whose
+    server_folder no longer matches a real folder in its category -- the
+    same fuzzy match already offered as a one-off suggestion on the manga
+    detail page and the /server-folders review table, just applied in bulk.
+    """
+    if not library_client.is_mounted():
+        message = f"partage NAS non monté ({settings.library_root})"
+        session.add(SyncLog(manga_id=None, source=SyncSource.library, status=SyncStatus.error, message=message))
+        session.commit()
+        return {"checked": 0, "matched": 0, "unmatched": 0, "error": message}
+
+    folders_by_category = {c: library_client.list_folders(c) for c in Category}
+    mangas = session.exec(select(Manga)).all()
+    checked = 0
+    matched = 0
+    unmatched = 0
+    total = len(mangas)
+    for i, manga in enumerate(mangas, start=1):
+        folders = folders_by_category[manga.category]
+        if manga.server_folder not in folders:
+            checked += 1
+            suggestion = library_client.suggest_folder(manga.title_en, manga.category, folders=folders)
+            if suggestion:
+                manga.server_folder = suggestion
+                manga.updated_at = datetime.now(timezone.utc)
+                session.add(manga)
+                session.commit()
+                matched += 1
+            else:
+                unmatched += 1
+        if progress_callback:
+            progress_callback(i, total)
+
+    session.add(
+        SyncLog(
+            manga_id=None,
+            source=SyncSource.library,
+            status=SyncStatus.success,
+            message=f"checked={checked} matched={matched} unmatched={unmatched}",
+        )
+    )
+    session.commit()
+    return {"checked": checked, "matched": matched, "unmatched": unmatched}
 
 
 def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> bool:
