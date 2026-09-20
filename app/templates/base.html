@@ -10,7 +10,7 @@
     <script src="/static/js/htmx.min.js?v={{ static_version }}"></script>
     <script src="/static/js/alpine.min.js?v={{ static_version }}" defer></script>
 </head>
-{% set admin_paths = ["/config", "/import", "/suwayomi", "/komga", "/logs"] %}
+{% set admin_paths = ["/config", "/import", "/suwayomi", "/komga", "/server-folders", "/logs"] %}
 {% set in_admin = request.url.path in admin_paths %}
 {% set in_home = request.url.path == "/" or request.url.path.startswith("/manga/") %}
 <body x-data="{ sidebarOpen: false }">
@@ -24,18 +24,19 @@
             <a href="/" class="mt-nav-item {{ 'active' if in_home }}">
                 <span class="icon">🏠</span><span>Accueil</span>
             </a>
-            <details class="mt-nav-group" {{ "open" if in_admin }}>
-                <summary class="mt-nav-item {{ 'active' if in_admin }}">
+            <div class="mt-nav-section">
+                <div class="mt-nav-item mt-nav-heading {{ 'active' if in_admin }}">
                     <span class="icon">⚙️</span><span>Configuration</span>
-                </summary>
+                </div>
                 <div class="mt-nav-sub">
                     <a href="/config" class="{{ 'active' if request.url.path == '/config' }}">Vue d'ensemble</a>
                     <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">📥 Import Excel</a>
                     <a href="/suwayomi" class="{{ 'active' if request.url.path == '/suwayomi' }}">🔗 Suwayomi</a>
                     <a href="/komga" class="{{ 'active' if request.url.path == '/komga' }}">📖 Komga</a>
+                    <a href="/server-folders" class="{{ 'active' if request.url.path == '/server-folders' }}">📁 Dossiers serveur</a>
                     <a href="/logs" class="{{ 'active' if request.url.path == '/logs' }}">🕒 Historique</a>
                 </div>
-            </details>
+            </div>
         </nav>
         <div class="mt-sidebar-footer">Manga Tracker</div>
     </aside>

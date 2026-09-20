@@ -41,9 +41,19 @@ def list_folders(category: Category) -> list[str]:
     return sorted(p.name for p in root.iterdir() if p.is_dir())
 
 
-def suggest_folder(title: str, category: Category) -> Optional[str]:
-    """Best-effort fuzzy match of a title against real folder names."""
-    folders = list_folders(category)
+def folder_display_path(category: Category, folder_name: str) -> str:
+    """"Manga/Bakuman"-style path, for showing where a server_folder was found."""
+    return f"{CATEGORY_DIR_NAMES[category]}/{folder_name}"
+
+
+def suggest_folder(title: str, category: Category, folders: Optional[list[str]] = None) -> Optional[str]:
+    """Best-effort fuzzy match of a title against real folder names.
+
+    Accepts a precomputed `folders` list so bulk callers (syncing every
+    tracked manga) don't re-list the same NAS directory per manga.
+    """
+    if folders is None:
+        folders = list_folders(category)
     if not folders:
         return None
     candidates = dict(enumerate(folders))

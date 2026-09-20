@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Dossiers serveur — Manga Tracker{% endblock %}
+{% block page_eyebrow %}<p class="mt-eyebrow">Configuration</p>{% endblock %}
+{% block page_title %}Dossiers serveur{% endblock %}
+{% block content %}
+
+<p>
+    Compare le champ "Dossier serveur" de chaque manga suivi avec les dossiers réels du partage NAS
+    ({{ library_root }}) et propose une correspondance quand il ne colle pas, pour compléter la fiche du manga.
+</p>
+
+{% if not mounted %}
+<article style="color:#f87171">Le partage NAS n'est pas monté ({{ library_root }}) — impossible de lister les dossiers réels.</article>
+{% else %}
+
+{% set mismatches = rows | rejectattr("current_valid") | list %}
+{% set applicable = mismatches | selectattr("suggested_folder") | list %}
+
+<div class="stats-row">
+    <span class="stat-card"><strong>{{ rows | length }}</strong> mangas suivis</span>
+    <span class="stat-card {{ 'active' if mismatches }}"><strong>{{ mismatches | length }}</strong> dossier(s) à corriger</span>
+</div>
+
+{% if mismatches %}
+<form method="post" action="/server-folders/apply-all" style="margin-bottom:1rem">
+    <button type="submit" {{ "disabled" if not applicable }}>✅ Appliquer toutes les suggestions ({{ applicable | length }})</button>
+</form>
+
+<table>
+    <thead><tr><th>Manga</th><th>Dossier actuel</th><th>Dossier trouvé sur le NAS</th><th></th></tr></thead>
+    <tbody>
+    {% for row in mismatches %}
+    <tr>
+        <td><a href="/manga/{{ row.manga.id }}">{{ row.manga.title_en }}</a></td>
+        <td><code>{{ row.current_path }}</code></td>
+        <td>
+            {% if row.suggested_path %}
+            <code>{{ row.suggested_path }}</code>
+            {% else %}
+            <small style="color:var(--subtle-text-color)">aucune correspondance</small>
+            {% endif %}
+        </td>
+        <td>
+            {% if row.suggested_folder %}
+            <form method="post" action="/server-folders/{{ row.manga.id }}/apply" style="margin:0">
+                <input type="hidden" name="folder" value="{{ row.suggested_folder }}">
+                <button type="submit" class="outline secondary">Appliquer</button>
+            </form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<article>Tous les dossiers serveur suivis correspondent à un dossier réel sur le NAS. 🎉</article>
+{% endif %}
+{% endif %}
+
+{% endblock %}

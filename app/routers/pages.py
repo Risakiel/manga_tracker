@@ -165,8 +165,9 @@ def manga_detail(request: Request, manga_id: int, session: Session = Depends(get
             "library_mounted": library_client.is_mounted(),
             "library_root": str(settings.library_root),
             "folder_options": folder_options,
+            "folder_prefix": library_client.CATEGORY_DIR_NAMES[manga.category],
             "suggested_folder": (
-                library_client.suggest_folder(manga.title_en, manga.category)
+                library_client.suggest_folder(manga.title_en, manga.category, folders=folder_options)
                 if folder_options and manga.server_folder not in folder_options
                 else None
             ),
@@ -413,3 +414,74 @@ def import_post(request: Request, file: UploadFile = File(...), session: Session
 def logs(request: Request, session: Session = Depends(get_session)):
     entries = session.exec(select(SyncLog).order_by(SyncLog.created_at.desc()).limit(200)).all()
     return templates.TemplateResponse(request, "logs.html", {"logs": entries})
+
+
+@router.get("/server-folders", response_class=HTMLResponse)
+def server_folders_page(request: Request, session: Session = Depends(get_session)):
+    mounted = library_client.is_mounted()
+    rows = []
+    if mounted:
+        folders_by_category = {c: library_client.list_folders(c) for c in Category}
+        mangas = session.exec(select(Manga)).all()
+        for manga in sorted(mangas, key=lambda m: m.title_en.lower()):
+            folders = folders_by_category[manga.category]
+            current_valid = manga.server_folder in folders
+            suggested_folder = (
+                library_client.suggest_folder(manga.title_en, manga.category, folders=folders)
+                if not current_valid
+                else None
+            )
+            rows.append(
+                {
+                    "manga": manga,
+                    "current_path": library_client.folder_display_path(manga.category, manga.server_folder),
+                    "current_valid": current_valid,
+                    "suggested_folder": suggested_folder,
+                    "suggested_path": (
+                        library_client.folder_display_path(manga.category, suggested_folder)
+                        if suggested_folder
+                        else None
+                    ),
+                }
+            )
+    return templates.TemplateResponse(
+        request,
+        "server_folders.html",
+        {
+            "mounted": mounted,
+            "library_root": str(settings.library_root),
+            "rows": rows,
+            "flash": request.query_params.get("flash"),
+        },
+    )
+
+
+@router.post("/server-folders/{manga_id}/apply")
+def server_folders_apply(manga_id: int, folder: str = Form(...), session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None and folder.strip():
+        manga.server_folder = folder.strip()
+        manga.updated_at = datetime.now(timezone.utc)
+        session.add(manga)
+        session.commit()
+    return RedirectResponse("/server-folders?flash=Dossier+mis+à+jour", status_code=303)
+
+
+@router.post("/server-folders/apply-all")
+def server_folders_apply_all(session: Session = Depends(get_session)):
+    folders_by_category = {c: library_client.list_folders(c) for c in Category}
+    mangas = session.exec(select(Manga)).all()
+    updated = 0
+    for manga in mangas:
+        folders = folders_by_category[manga.category]
+        if manga.server_folder in folders:
+            continue
+        suggestion = library_client.suggest_folder(manga.title_en, manga.category, folders=folders)
+        if suggestion:
+            manga.server_folder = suggestion
+            manga.updated_at = datetime.now(timezone.utc)
+            session.add(manga)
+            updated += 1
+    if updated:
+        session.commit()
+    return RedirectResponse(f"/server-folders?flash={updated}+dossier(s)+mis+à+jour", status_code=303)
