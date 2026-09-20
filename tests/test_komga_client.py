@@ -45,7 +45,7 @@ SAMPLE_SERIES_NODE = {
         "summaryLock": False,
         "genres": ["romance"],
         "genresLock": False,
-        "tags": ["Suwayomi: Terminé"],
+        "tags": ["0-Suwayomi: Terminé"],
         "tagsLock": False,
         "alternateTitles": [{"label": "", "title": "Alt Title"}],
         "alternateTitlesLock": False,
@@ -72,7 +72,7 @@ def test_fetch_series_parses_metadata_and_paginates(monkeypatch):
     assert first.books_read_count == 5
     assert first.summary == "A summary."
     assert first.genres == ["romance"]
-    assert first.tags == ["Suwayomi: Terminé"]
+    assert first.tags == ["0-Suwayomi: Terminé"]
     assert first.alternate_titles == ["Alt Title"]
     assert first.mangaupdates_url == "https://www.mangaupdates.com/series/0i8pz41/100-personal"
 
@@ -109,3 +109,10 @@ def test_update_metadata_with_explicit_client_still_sends_api_key(monkeypatch):
         komga_client.update_metadata("series-1", {"summary": "New summary"}, client=client)
 
     assert route.calls.last.request.headers["X-API-Key"] == "test-api-key"
+
+
+def test_is_suwayomi_tag_recognizes_current_and_legacy_prefix():
+    assert komga_client.is_suwayomi_tag("0-Suwayomi: Terminé")
+    assert komga_client.is_suwayomi_tag("0-suwayomi: terminé")  # Komga lowercases stored tags
+    assert komga_client.is_suwayomi_tag("Suwayomi: Terminé")  # legacy, pre sort-order fix
+    assert not komga_client.is_suwayomi_tag("My Own Tag")

@@ -20,12 +20,27 @@ from app.services.library_client import CATEGORY_DIR_NAMES
 MANGAUPDATES_LINK_LABEL = "MangaUpdates"
 
 # Prefix marking which of a series' Komga tags mirror its Suwayomi
-# categories (e.g. "Suwayomi: Terminé"), so a live sync can replace exactly
+# categories (e.g. "0-Suwayomi: Terminé"), so a live sync can replace exactly
 # that subset on every run without touching tags added by the user or any
 # other tool -- unlike genres/summary/alt titles, this is a live status, not
 # static bio info filled once. Komga's tag filter (web UI and any client
 # reading the same API, e.g. Komelia) then lets series be browsed by it.
-SUWAYOMI_TAG_PREFIX = "Suwayomi: "
+#
+# The leading "0-" is deliberate: Komga/Komelia list tags alphabetically
+# with no way to pin or reorder them, and a real library can have hundreds
+# of fine-grained tags -- "0" sorts before both digits and letters in every
+# collation these apps actually use, so the handful of Suwayomi tags stay
+# grouped at the very top instead of buried under "s".
+SUWAYOMI_TAG_PREFIX = "0-Suwayomi: "
+# Recognized (case-insensitively) alongside SUWAYOMI_TAG_PREFIX so tags
+# pushed before the "0-" sort-order fix get cleaned up/migrated to the new
+# prefix instead of lingering forever as unrecognized duplicates.
+_LEGACY_SUWAYOMI_TAG_PREFIXES = ("Suwayomi: ",)
+
+
+def is_suwayomi_tag(tag: str) -> bool:
+    lowered = tag.casefold()
+    return any(lowered.startswith(p.casefold()) for p in (SUWAYOMI_TAG_PREFIX, *_LEGACY_SUWAYOMI_TAG_PREFIXES))
 
 
 class KomgaUnavailable(Exception):

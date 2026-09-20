@@ -292,7 +292,7 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
             {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
         ]
     if not series.tags_locked:
-        other_tags = [t for t in series.tags if not t.startswith(komga_client.SUWAYOMI_TAG_PREFIX)]
+        other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
         suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
         new_tags = other_tags + suwayomi_tags
         if sorted(new_tags) != sorted(series.tags):

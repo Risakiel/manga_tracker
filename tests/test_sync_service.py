@@ -355,13 +355,16 @@ def test_komga_sync_pushes_suwayomi_categories_as_prefixed_tags(monkeypatch):
     sync_komga_library(session)
 
     assert len(updates) == 1
-    assert updates[0][1]["tags"] == ["Suwayomi: Terminé"]
+    assert updates[0][1]["tags"] == ["0-Suwayomi: Terminé"]
 
 
 def test_komga_sync_keeps_non_suwayomi_tags_while_updating_the_rest(monkeypatch):
     # The Suwayomi category can change over time (e.g. "En cours" -> "Terminé"),
     # so unlike genres/summary this tag subset is replaced every run -- but a
     # tag the user (or another tool) added by hand must survive untouched.
+    # Also doubles as the migration case: a tag pushed before the "0-"
+    # sort-order fix (plain "Suwayomi: ...") must be replaced, not left
+    # behind as an unrecognized duplicate.
     session = _session()
     manga = Manga(
         category=Category.manga,
@@ -387,7 +390,7 @@ def test_komga_sync_keeps_non_suwayomi_tags_while_updating_the_rest(monkeypatch)
     sync_komga_library(session)
 
     assert len(updates) == 1
-    assert sorted(updates[0][1]["tags"]) == ["My Own Tag", "Suwayomi: Terminé"]
+    assert sorted(updates[0][1]["tags"]) == ["0-Suwayomi: Terminé", "My Own Tag"]
 
 
 def test_komga_sync_skips_tags_when_locked(monkeypatch):

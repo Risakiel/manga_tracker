@@ -13,10 +13,11 @@
 </p>
 <p>
     Les catégories Suwayomi de chaque manga (ex. "Terminé", "Scans manquants") sont en plus
-    poussées comme tags Komga au format <code>Suwayomi: &lt;catégorie&gt;</code>, tenus à jour à
+    poussées comme tags Komga au format <code>0-Suwayomi: &lt;catégorie&gt;</code>, tenus à jour à
     chaque synchronisation (contrairement aux autres champs, ceux-ci sont bien remplacés pour
     suivre le statut Suwayomi actuel) — filtrables dans Komga comme les genres, et donc aussi
-    dans Komelia.
+    dans Komelia. Le préfixe <code>0-</code> les fait trier en tête de la liste des tags (souvent
+    longue) pour un filtrage rapide.
 </p>
 
 {% if not komga_configured %}
