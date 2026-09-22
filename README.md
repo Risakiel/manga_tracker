@@ -15,8 +15,8 @@ bibliothèque [Suwayomi](https://github.com/Suwayomi/Suwayomi-Server) + [Komga](
   publique — pas de clé requise. Le lien MangaUpdates est éditable à tout moment sur la
   fiche d'un manga (utile si le rattachement automatique s'est trompé, ou pour un titre
   fraîchement importé depuis Suwayomi qui n'en a pas encore).
-- Si MangaUpdates ne trouve rien d'unique, la fiche manga tente ensuite [AniList](https://anilist.co/)
-  puis [MangaDex](https://mangadex.org/) (même mécanique — lien direct ou recherche par
+- Si MangaUpdates ne trouve rien d'unique, la fiche manga tente ensuite [MangaDex](https://mangadex.org/)
+  puis [AniList](https://anilist.co/) (même mécanique — lien direct ou recherche par
   titre avec confirmation manuelle si ambigu). Les trois sources sont affichées côte à côte
   avec leur propre lien et leur propre "dernier chapitre" ; MangaUpdates reste la source par
   défaut pour le calcul du retard (MangaDex peut être choisi manuellement à la place) ; AniList
@@ -142,7 +142,7 @@ app/
 │   ├── excel_importer.py             # Import non-destructif de l'Excel
 │   ├── matching.py                    # Normalisation + fuzzy match (rapidfuzz)
 │   ├── sync_service.py                 # Orchestration : reconciliation/auto-import Suwayomi,
-│   │                                     cascade MangaUpdates -> AniList -> MangaDex, sync Komga
+│   │                                     cascade MangaUpdates -> MangaDex -> AniList, sync Komga
 │   └── scheduler.py                     # Jobs périodiques (APScheduler)
 ├── templates/                       # Jinja2 + HTMX + Pico.css (vendored, pas de CDN)
 └── static/

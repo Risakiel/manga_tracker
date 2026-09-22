@@ -152,7 +152,7 @@ def sync_manga_with_anilist_link(session: Session, manga: Manga, client: httpx.C
 
 def sync_manga_with_mangadex(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
     """Resolve/refresh this manga's own MangaDex entry (id/url/chapter
-    count), the last link in the MangaUpdates -> AniList -> MangaDex
+    count), the second link in the MangaUpdates -> MangaDex -> AniList
     fallback chain (see sync_manga_all_sources)."""
     try:
         result, candidates = mangadex_client.resolve_series(manga.mangadex_url or "", manga.title_en, client=client)
@@ -181,19 +181,18 @@ def sync_manga_with_mangadex(session: Session, manga: Manga, client: httpx.Clien
 
 def sync_manga_all_sources(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
     """Full per-manga resync: MangaUpdates first (the trusted default), then
-    AniList (only if MU failed to link -- it's still worth linking for its
-    own sake even though its chapter count won't help, see below), then
-    MangaDex. MangaDex is tried whenever there's still no usable chapter
-    count at all, *not* just when AniList also failed to link -- AniList
-    resolving successfully doesn't mean much for chapters_behind, since its
-    `chapters` field is almost always null for an ongoing series (only
-    AniList enrichment, cover/alt titles, always runs regardless).
+    MangaDex (tried whenever there's still no usable chapter count -- it,
+    like MangaUpdates, tracks real scanlated releases), then AniList as the
+    last resort for linking (only if neither of the above linked at all --
+    its own chapter count almost never helps, since `chapters` is only
+    meaningful once a series is complete). AniList enrichment (cover/alt
+    titles) always runs regardless of whether it got linked above.
     """
     sync_manga_with_mangaupdates(session, manga, client=client)
-    if manga.mangaupdates_id is None:
-        sync_manga_with_anilist_link(session, manga, client=client)
-    if manga.mu_latest_chapter is None and manga.mangadex_latest_chapter is None:
+    if manga.mu_latest_chapter is None:
         sync_manga_with_mangadex(session, manga, client=client)
+    if manga.mangaupdates_id is None and manga.mangadex_id is None:
+        sync_manga_with_anilist_link(session, manga, client=client)
     enrich_with_anilist(session, manga, client=client)
 
 

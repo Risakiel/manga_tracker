@@ -606,22 +606,16 @@ def test_sync_manga_all_sources_stops_after_mangaupdates_succeeds(monkeypatch):
     assert mangadex_calls == []  # ... nor MangaDex
 
 
-def test_sync_manga_all_sources_tries_mangadex_when_anilist_has_no_chapters(monkeypatch):
-    # AniList resolving successfully must not stop the chain -- its
-    # `chapters` field is null for an ongoing series, so MangaDex is still
-    # needed to actually get a usable chapter count.
+def test_sync_manga_all_sources_tries_mangadex_before_anilist(monkeypatch):
+    # MangaDex, like MangaUpdates, tracks real scanlated chapters -- it's
+    # tried right after MangaUpdates fails, before AniList (whose own
+    # chapter count almost never helps for an ongoing series).
     session = _session()
     manga = Manga(category=Category.manga, title_en="Some Title", server_folder="Some Title", mangaupdates_url="")
     session.add(manga)
     session.commit()
 
     monkeypatch.setattr(mangaupdates_client, "resolve_series", lambda *a, **k: (None, []))
-    monkeypatch.setattr(
-        anilist_client,
-        "resolve_series",
-        lambda *a, **k: (anilist_client.AniListMedia(id=5, title_english="Some Title", chapters=None), []),
-    )
-    monkeypatch.setattr(anilist_client, "search_media", lambda *a, **k: None)
     mangadex_calls = []
 
     def _fake_mangadex_resolve(*a, **k):
@@ -634,13 +628,17 @@ def test_sync_manga_all_sources_tries_mangadex_when_anilist_has_no_chapters(monk
         )
 
     monkeypatch.setattr(mangadex_client, "resolve_series", _fake_mangadex_resolve)
+    anilist_calls = []
+    monkeypatch.setattr(anilist_client, "resolve_series", lambda *a, **k: (anilist_calls.append(1), (None, []))[1])
+    monkeypatch.setattr(anilist_client, "search_media", lambda *a, **k: None)
 
     sync_manga_all_sources(session, manga)
 
-    assert manga.anilist_id == 5
     assert mangadex_calls == [1]
+    assert manga.mangadex_id == "uuid-1"
     assert manga.mangadex_latest_chapter == 42
     assert manga.authoritative_latest_chapter == 42
+    assert anilist_calls == []  # MangaDex already linked -> AniList link never attempted
 
 
 def test_sync_manga_all_sources_leaves_every_source_for_manual_review_when_all_fail(monkeypatch):

@@ -114,18 +114,6 @@
             </td>
         </tr>
         <tr>
-            <td>AniList</td>
-            <td>{{ manga.anilist_latest_chapter | int if manga.anilist_latest_chapter is not none else "—" }}</td>
-            <td>
-                <form method="post" action="/manga/{{ manga.id }}/anilist-url" class="source-link-form">
-                    <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList">
-                    <button type="submit" class="secondary">Enregistrer + resync</button>
-                </form>
-                {% if manga.anilist_url %}<small class="source-link-view"><a href="{{ manga.anilist_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
-            </td>
-            <td></td>
-        </tr>
-        <tr>
             <td>MangaDex {% if chapter_source == "mangadex" %}⭐{% endif %}</td>
             <td>{{ manga.mangadex_latest_chapter | int if manga.mangadex_latest_chapter is not none else "—" }}</td>
             <td>
@@ -143,6 +131,18 @@
                 </form>
                 {% endif %}
             </td>
+        </tr>
+        <tr>
+            <td>AniList</td>
+            <td>{{ manga.anilist_latest_chapter | int if manga.anilist_latest_chapter is not none else "—" }}</td>
+            <td>
+                <form method="post" action="/manga/{{ manga.id }}/anilist-url" class="source-link-form">
+                    <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList">
+                    <button type="submit" class="secondary">Enregistrer + resync</button>
+                </form>
+                {% if manga.anilist_url %}<small class="source-link-view"><a href="{{ manga.anilist_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
+            </td>
+            <td></td>
         </tr>
         </tbody>
     </table>
