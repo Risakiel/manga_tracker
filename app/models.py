@@ -27,6 +27,7 @@ class Status(str, Enum):
 class SyncSource(str, Enum):
     mangaupdates = "mangaupdates"
     anilist = "anilist"
+    mangadex = "mangadex"
     suwayomi = "suwayomi"
     komga = "komga"
     library = "library"
@@ -36,6 +37,16 @@ class SyncSource(str, Enum):
 class SyncStatus(str, Enum):
     success = "success"
     error = "error"
+
+
+class ChapterSource(str, Enum):
+    """Which source's chapter count counts as "the" latest chapter for the
+    dashboard's "en retard" figure. AniList is deliberately not an option
+    here -- its chapter count is only meaningful for completed series, so
+    it's shown/linked like the other two sources but never authoritative."""
+
+    mangaupdates = "mangaupdates"
+    mangadex = "mangadex"
 
 
 class Manga(SQLModel, table=True):
@@ -49,6 +60,27 @@ class Manga(SQLModel, table=True):
     mangaupdates_id: Optional[int] = Field(default=None, index=True)
     needs_manual_match: bool = Field(default=False, index=True)
     match_candidates_json: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    # AniList and MangaDex links, resolved/refreshed the same way as the
+    # MangaUpdates ones above (see sync_service.py) -- kept as their own
+    # nullable columns (not required, unlike the original MangaUpdates
+    # fields) since they're an optional add-on for existing rows.
+    anilist_url: Optional[str] = None
+    anilist_id: Optional[int] = Field(default=None, index=True)
+    anilist_latest_chapter: Optional[float] = None
+    anilist_needs_manual_match: Optional[bool] = Field(default=None, index=True)
+    anilist_match_candidates_json: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    mangadex_url: Optional[str] = None
+    mangadex_id: Optional[str] = Field(default=None, index=True)
+    mangadex_latest_chapter: Optional[float] = None
+    mangadex_needs_manual_match: Optional[bool] = Field(default=None, index=True)
+    mangadex_match_candidates_json: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    # Which source's chapter count drives `chapters_behind` below. None
+    # means "use the default order" (MangaUpdates, falling back to
+    # MangaDex) -- see `authoritative_latest_chapter`.
+    preferred_chapter_source: Optional[ChapterSource] = Field(default=None, index=True)
 
     status_raw: str = ""
     status: Status = Field(default=Status.unknown, index=True)
@@ -110,10 +142,39 @@ class Manga(SQLModel, table=True):
         self.match_candidates_json = json.dumps(value)
 
     @property
+    def anilist_match_candidates(self) -> list[dict]:
+        return json.loads(self.anilist_match_candidates_json or "[]")
+
+    @anilist_match_candidates.setter
+    def anilist_match_candidates(self, value: list[dict]) -> None:
+        self.anilist_match_candidates_json = json.dumps(value)
+
+    @property
+    def mangadex_match_candidates(self) -> list[dict]:
+        return json.loads(self.mangadex_match_candidates_json or "[]")
+
+    @mangadex_match_candidates.setter
+    def mangadex_match_candidates(self, value: list[dict]) -> None:
+        self.mangadex_match_candidates_json = json.dumps(value)
+
+    @property
+    def authoritative_latest_chapter(self) -> Optional[float]:
+        """The chapter count `chapters_behind` is computed from: the
+        preferred source (MangaUpdates by default) if it has one, else
+        whichever of MangaUpdates/MangaDex does -- AniList is excluded, see
+        ChapterSource."""
+        source = self.preferred_chapter_source or ChapterSource.mangaupdates
+        preferred = self.mangadex_latest_chapter if source == ChapterSource.mangadex else self.mu_latest_chapter
+        if preferred is not None:
+            return preferred
+        return self.mu_latest_chapter if self.mu_latest_chapter is not None else self.mangadex_latest_chapter
+
+    @property
     def chapters_behind(self) -> Optional[float]:
-        if self.suwayomi_chapter_count is None or self.mu_latest_chapter is None:
+        latest = self.authoritative_latest_chapter
+        if self.suwayomi_chapter_count is None or latest is None:
             return None
-        return max(self.mu_latest_chapter - self.suwayomi_chapter_count, 0)
+        return max(latest - self.suwayomi_chapter_count, 0)
 
     @property
     def komga_unread_count(self) -> Optional[int]:

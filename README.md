@@ -15,8 +15,13 @@ bibliothèque [Suwayomi](https://github.com/Suwayomi/Suwayomi-Server) + [Komga](
   publique — pas de clé requise. Le lien MangaUpdates est éditable à tout moment sur la
   fiche d'un manga (utile si le rattachement automatique s'est trompé, ou pour un titre
   fraîchement importé depuis Suwayomi qui n'en a pas encore).
-- Enrichissement complémentaire via [AniList](https://anilist.co/) quand MangaUpdates ne
-  suffit pas (couverture, titres alternatifs).
+- Si MangaUpdates ne trouve rien d'unique, la fiche manga tente ensuite [AniList](https://anilist.co/)
+  puis [MangaDex](https://mangadex.org/) (même mécanique — lien direct ou recherche par
+  titre avec confirmation manuelle si ambigu). Les trois sources sont affichées côte à côte
+  avec leur propre lien et leur propre "dernier chapitre" ; MangaUpdates reste la source par
+  défaut pour le calcul du retard (MangaDex peut être choisi manuellement à la place) ; AniList
+  n'y participe jamais, son décompte de chapitres n'étant fiable qu'une fois la série
+  terminée, mais reste utile en enrichissement (couverture, titres alternatifs).
 - Intégration [Komga](https://komga.org/) (la bibliothèque de lecture) : récupère la vraie
   progression de lecture (chapitres lus vs juste téléchargés), pousse vers Komga les infos
   MangaUpdates qu'il n'a pas encore (résumé, genres, titres alternatifs, lien MangaUpdates —
@@ -129,15 +134,16 @@ app/
 ├── routers/pages.py            # Toutes les routes (pages + actions)
 ├── services/
 │   ├── mangaupdates_client.py  # Décodage URL -> series_id, fetch, search fallback
-│   ├── anilist_client.py        # Enrichissement complémentaire
-│   ├── suwayomi_client.py        # GraphQL: bibliothèque, genres, catégories, chapitres
-│   ├── komga_client.py            # REST: séries, progression de lecture, push metadata
-│   ├── library_client.py           # Liste les vrais dossiers du partage NAS monté
-│   ├── excel_importer.py            # Import non-destructif de l'Excel
-│   ├── matching.py                   # Normalisation + fuzzy match (rapidfuzz)
-│   ├── sync_service.py                # Orchestration : reconciliation/auto-import Suwayomi,
-│   │                                    sync MangaUpdates, enrichissement AniList, sync Komga
-│   └── scheduler.py                    # Jobs périodiques (APScheduler)
+│   ├── anilist_client.py        # Résolution (id/recherche) + enrichissement complémentaire
+│   ├── mangadex_client.py        # Résolution (id/recherche) + dernier chapitre (fallback)
+│   ├── suwayomi_client.py         # GraphQL: bibliothèque, genres, catégories, chapitres
+│   ├── komga_client.py             # REST: séries, progression de lecture, push metadata
+│   ├── library_client.py            # Liste les vrais dossiers du partage NAS monté
+│   ├── excel_importer.py             # Import non-destructif de l'Excel
+│   ├── matching.py                    # Normalisation + fuzzy match (rapidfuzz)
+│   ├── sync_service.py                 # Orchestration : reconciliation/auto-import Suwayomi,
+│   │                                     cascade MangaUpdates -> AniList -> MangaDex, sync Komga
+│   └── scheduler.py                     # Jobs périodiques (APScheduler)
 ├── templates/                       # Jinja2 + HTMX + Pico.css (vendored, pas de CDN)
 └── static/
 ```

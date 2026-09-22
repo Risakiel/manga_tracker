@@ -3,9 +3,9 @@ import respx
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.config import settings
-from app.models import Category, Manga
-from app.services import komga_client, suwayomi_client
-from app.services.sync_service import sync_komga_library, sync_suwayomi_library
+from app.models import Category, ChapterSource, Manga
+from app.services import anilist_client, komga_client, mangadex_client, mangaupdates_client, suwayomi_client
+from app.services.sync_service import sync_komga_library, sync_manga_all_sources, sync_suwayomi_library
 
 
 def _session():
@@ -560,3 +560,113 @@ def test_komga_sync_survives_a_failed_scan_trigger(monkeypatch):
     result = sync_komga_library(session)
 
     assert result["matched"] == 1
+
+
+def test_authoritative_latest_chapter_defaults_to_mangaupdates_then_mangadex():
+    manga = Manga(category=Category.manga, title_en="X", server_folder="X")
+    assert manga.authoritative_latest_chapter is None
+
+    manga.mangadex_latest_chapter = 40
+    assert manga.authoritative_latest_chapter == 40  # MangaUpdates empty -> falls back
+
+    manga.mu_latest_chapter = 12
+    assert manga.authoritative_latest_chapter == 12  # MangaUpdates present -> default priority
+
+    manga.preferred_chapter_source = ChapterSource.mangadex
+    assert manga.authoritative_latest_chapter == 40  # explicit override
+
+
+def test_sync_manga_all_sources_stops_after_mangaupdates_succeeds(monkeypatch):
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="Some Title", server_folder="Some Title", mangaupdates_url="")
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "resolve_series",
+        lambda *a, **k: (
+            mangaupdates_client.MangaUpdatesSeries(
+                series_id=1, title="Some Title", url="https://www.mangaupdates.com/series/kljw00c/x", latest_chapter=10
+            ),
+            [],
+        ),
+    )
+    anilist_calls = []
+    mangadex_calls = []
+    monkeypatch.setattr(anilist_client, "resolve_series", lambda *a, **k: (anilist_calls.append(1), (None, []))[1])
+    monkeypatch.setattr(mangadex_client, "resolve_series", lambda *a, **k: (mangadex_calls.append(1), (None, []))[1])
+    monkeypatch.setattr(anilist_client, "search_media", lambda *a, **k: None)
+
+    sync_manga_all_sources(session, manga)
+
+    assert manga.mangaupdates_id == 1
+    assert manga.mu_latest_chapter == 10
+    assert anilist_calls == []  # MangaUpdates succeeded -> AniList link never attempted
+    assert mangadex_calls == []  # ... nor MangaDex
+
+
+def test_sync_manga_all_sources_tries_mangadex_when_anilist_has_no_chapters(monkeypatch):
+    # AniList resolving successfully must not stop the chain -- its
+    # `chapters` field is null for an ongoing series, so MangaDex is still
+    # needed to actually get a usable chapter count.
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="Some Title", server_folder="Some Title", mangaupdates_url="")
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(mangaupdates_client, "resolve_series", lambda *a, **k: (None, []))
+    monkeypatch.setattr(
+        anilist_client,
+        "resolve_series",
+        lambda *a, **k: (anilist_client.AniListMedia(id=5, title_english="Some Title", chapters=None), []),
+    )
+    monkeypatch.setattr(anilist_client, "search_media", lambda *a, **k: None)
+    mangadex_calls = []
+
+    def _fake_mangadex_resolve(*a, **k):
+        mangadex_calls.append(1)
+        return (
+            mangadex_client.MangaDexManga(
+                id="uuid-1", title="Some Title", url="https://mangadex.org/title/uuid-1/x", latest_chapter=42
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(mangadex_client, "resolve_series", _fake_mangadex_resolve)
+
+    sync_manga_all_sources(session, manga)
+
+    assert manga.anilist_id == 5
+    assert mangadex_calls == [1]
+    assert manga.mangadex_latest_chapter == 42
+    assert manga.authoritative_latest_chapter == 42
+
+
+def test_sync_manga_all_sources_leaves_every_source_for_manual_review_when_all_fail(monkeypatch):
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="Some Title", server_folder="Some Title", mangaupdates_url="")
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "resolve_series",
+        lambda *a, **k: (None, [mangaupdates_client.MangaUpdatesSearchCandidate(series_id=1, title="X", url="u")]),
+    )
+    monkeypatch.setattr(anilist_client, "resolve_series", lambda *a, **k: (None, []))
+    monkeypatch.setattr(anilist_client, "search_media", lambda *a, **k: None)
+    mangadex_calls = []
+
+    def _fake_mangadex_resolve(*a, **k):
+        mangadex_calls.append(1)
+        return None, [mangadex_client.MangaDexSearchCandidate(id="uuid-2", title="Y", url="u2")]
+
+    monkeypatch.setattr(mangadex_client, "resolve_series", _fake_mangadex_resolve)
+
+    sync_manga_all_sources(session, manga)
+
+    assert manga.needs_manual_match is True
+    assert manga.anilist_needs_manual_match is False  # AniList found zero candidates -> nothing to review
+    assert mangadex_calls == [1]
+    assert manga.mangadex_needs_manual_match is True

@@ -13,12 +13,15 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
-from app.models import Category, Manga, Status, SyncLog
-from app.services import komga_client, library_client, mangaupdates_client
+from app.models import Category, ChapterSource, Manga, Status, SyncLog
+from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client
 from app.services.excel_importer import import_excel
 from app.services.sync_service import (
     enrich_with_anilist,
     sync_komga_library,
+    sync_manga_all_sources,
+    sync_manga_with_anilist_link,
+    sync_manga_with_mangadex,
     sync_manga_with_mangaupdates,
     sync_server_folders,
     sync_suwayomi_library,
@@ -192,8 +195,7 @@ def manga_detail(request: Request, manga_id: int, session: Session = Depends(get
 def manga_sync(manga_id: int, session: Session = Depends(get_session)):
     manga = session.get(Manga, manga_id)
     if manga is not None:
-        sync_manga_with_mangaupdates(session, manga)
-        enrich_with_anilist(session, manga)
+        sync_manga_all_sources(session, manga)
     return RedirectResponse(f"/manga/{manga_id}", status_code=303)
 
 
@@ -268,6 +270,79 @@ def manga_manual_match(
         manga.description = series.description or manga.description
         manga.sync_error = None
         manga.last_synced_at = datetime.now(timezone.utc)
+        manga.updated_at = datetime.now(timezone.utc)
+        session.add(manga)
+        session.commit()
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/anilist-url")
+def manga_set_anilist_url(manga_id: int, anilist_url: str = Form(...), session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None and anilist_url.strip():
+        manga.anilist_url = anilist_url.strip()
+        manga.anilist_needs_manual_match = False
+        manga.anilist_match_candidates = []
+        session.add(manga)
+        session.commit()
+        sync_manga_with_anilist_link(session, manga)
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/anilist-manual-match")
+def manga_anilist_manual_match(manga_id: int, anilist_id: int = Form(...), session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None:
+        media = anilist_client.fetch_media_by_id(anilist_id)
+        if media is not None:
+            manga.anilist_id = media.id
+            manga.anilist_url = media.url
+            manga.anilist_latest_chapter = media.chapters
+            manga.anilist_needs_manual_match = False
+            manga.anilist_match_candidates = []
+            manga.updated_at = datetime.now(timezone.utc)
+            session.add(manga)
+            session.commit()
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/mangadex-url")
+def manga_set_mangadex_url(manga_id: int, mangadex_url: str = Form(...), session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None and mangadex_url.strip():
+        manga.mangadex_url = mangadex_url.strip()
+        manga.mangadex_needs_manual_match = False
+        manga.mangadex_match_candidates = []
+        session.add(manga)
+        session.commit()
+        sync_manga_with_mangadex(session, manga)
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/mangadex-manual-match")
+def manga_mangadex_manual_match(manga_id: int, mangadex_id: str = Form(...), session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None and mangadex_id.strip():
+        result = mangadex_client.fetch_manga(mangadex_id.strip())
+        manga.mangadex_id = result.id
+        manga.mangadex_url = result.url
+        manga.mangadex_latest_chapter = result.latest_chapter
+        manga.mangadex_needs_manual_match = False
+        manga.mangadex_match_candidates = []
+        manga.updated_at = datetime.now(timezone.utc)
+        session.add(manga)
+        session.commit()
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/preferred-chapter-source")
+def manga_set_preferred_chapter_source(
+    manga_id: int, source: str = Form(...), session: Session = Depends(get_session)
+):
+    manga = session.get(Manga, manga_id)
+    valid_sources = {s.value for s in ChapterSource}
+    if manga is not None and source in valid_sources:
+        manga.preferred_chapter_source = ChapterSource(source)
         manga.updated_at = datetime.now(timezone.utc)
         session.add(manga)
         session.commit()

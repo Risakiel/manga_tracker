@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
-from app.services import anilist_client, komga_client, library_client, mangaupdates_client, suwayomi_client
+from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client, suwayomi_client
 from app.services.matching import best_match, looks_related, normalize_title
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,83 @@ def enrich_with_anilist(session: Session, manga: Manga, client: httpx.Client | N
     session.add(manga)
     session.add(SyncLog(manga_id=manga.id, source=SyncSource.anilist, status=SyncStatus.success, message="enriched"))
     session.commit()
+
+
+def sync_manga_with_anilist_link(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
+    """Resolve/refresh this manga's own AniList entry (id/url/chapter count)
+    via a proper search-with-candidates flow -- unlike enrich_with_anilist
+    above, which only ever does a blind single-result search to fill
+    metadata gaps and never links anything."""
+    try:
+        media, candidates = anilist_client.resolve_series(manga.anilist_url or "", manga.title_en, client=client)
+    except httpx.HTTPError as exc:
+        session.add(SyncLog(manga_id=manga.id, source=SyncSource.anilist, status=SyncStatus.error, message=str(exc)))
+        session.commit()
+        return
+
+    if media is None:
+        manga.anilist_needs_manual_match = bool(candidates)
+        manga.anilist_match_candidates = [{"id": c.id, "title": c.title} for c in candidates]
+        session.add(manga)
+        session.commit()
+        return
+
+    manga.anilist_id = media.id
+    manga.anilist_url = media.url
+    manga.anilist_latest_chapter = media.chapters
+    manga.anilist_needs_manual_match = False
+    manga.anilist_match_candidates = []
+    manga.updated_at = datetime.now(timezone.utc)
+    session.add(manga)
+    session.add(SyncLog(manga_id=manga.id, source=SyncSource.anilist, status=SyncStatus.success, message=media.title))
+    session.commit()
+
+
+def sync_manga_with_mangadex(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
+    """Resolve/refresh this manga's own MangaDex entry (id/url/chapter
+    count), the last link in the MangaUpdates -> AniList -> MangaDex
+    fallback chain (see sync_manga_all_sources)."""
+    try:
+        result, candidates = mangadex_client.resolve_series(manga.mangadex_url or "", manga.title_en, client=client)
+    except httpx.HTTPError as exc:
+        session.add(SyncLog(manga_id=manga.id, source=SyncSource.mangadex, status=SyncStatus.error, message=str(exc)))
+        session.commit()
+        return
+
+    if result is None:
+        manga.mangadex_needs_manual_match = bool(candidates)
+        manga.mangadex_match_candidates = [{"id": c.id, "title": c.title, "url": c.url} for c in candidates]
+        session.add(manga)
+        session.commit()
+        return
+
+    manga.mangadex_id = result.id
+    manga.mangadex_url = result.url
+    manga.mangadex_latest_chapter = result.latest_chapter
+    manga.mangadex_needs_manual_match = False
+    manga.mangadex_match_candidates = []
+    manga.updated_at = datetime.now(timezone.utc)
+    session.add(manga)
+    session.add(SyncLog(manga_id=manga.id, source=SyncSource.mangadex, status=SyncStatus.success, message=result.title))
+    session.commit()
+
+
+def sync_manga_all_sources(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
+    """Full per-manga resync: MangaUpdates first (the trusted default), then
+    AniList (only if MU failed to link -- it's still worth linking for its
+    own sake even though its chapter count won't help, see below), then
+    MangaDex. MangaDex is tried whenever there's still no usable chapter
+    count at all, *not* just when AniList also failed to link -- AniList
+    resolving successfully doesn't mean much for chapters_behind, since its
+    `chapters` field is almost always null for an ongoing series (only
+    AniList enrichment, cover/alt titles, always runs regardless).
+    """
+    sync_manga_with_mangaupdates(session, manga, client=client)
+    if manga.mangaupdates_id is None:
+        sync_manga_with_anilist_link(session, manga, client=client)
+    if manga.mu_latest_chapter is None and manga.mangadex_latest_chapter is None:
+        sync_manga_with_mangadex(session, manga, client=client)
+    enrich_with_anilist(session, manga, client=client)
 
 
 def sync_suwayomi_library(
