@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
 from app.services import anilist_client, komga_client, library_client, mangaupdates_client, suwayomi_client
-from app.services.matching import best_match, normalize_title
+from app.services.matching import best_match, looks_related, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -319,9 +319,11 @@ def sync_komga_library(
     (e.g. Komelia).
 
     Matching priority: MangaUpdates series_id (both sides usually already
-    link to it) > exact folder-name match within the same category > fuzzy
-    title match. Komga series with no match are only counted, not created --
-    Suwayomi (not Komga) is this app's source of truth for which manga exist.
+    link to it, and only trusted if the series still plausibly looks like
+    the same manga -- see the sanity check below) > exact folder-name match
+    within the same category > fuzzy title match. Komga series with no
+    match are only counted, not created -- Suwayomi (not Komga) is this
+    app's source of truth for which manga exist.
     """
     try:
         library_ids = komga_client.list_library_ids()
@@ -372,7 +374,19 @@ def sync_komga_library(
             if series.mangaupdates_url:
                 mu_series_id = mangaupdates_client.extract_series_id(series.mangaupdates_url)
                 if mu_series_id is not None:
-                    manga = by_mu_id.get(mu_series_id)
+                    candidate = by_mu_id.get(mu_series_id)
+                    # The MangaUpdates link already stored on the Komga side
+                    # can be stale or simply wrong (set by hand, or by
+                    # another tool like komf) -- only trust it if the series
+                    # still plausibly looks like the same manga, so a bad
+                    # link doesn't silently pair this series with an
+                    # unrelated tracked manga. A rejected candidate still
+                    # gets a fair shot below via folder/fuzzy-title matching.
+                    if candidate is not None and (
+                        normalize_title(candidate.server_folder) == normalize_title(series.name)
+                        or looks_related(candidate.title_en, series.name)
+                    ):
+                        manga = candidate
             if manga is None:
                 manga = by_folder.get((category, normalize_title(series.name)))
             if manga is None:

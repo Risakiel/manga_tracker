@@ -219,6 +219,40 @@ def test_komga_sync_matches_by_mangaupdates_link(monkeypatch):
     assert manga.komga_books_read_count == 10
 
 
+def test_komga_sync_ignores_an_implausible_mangaupdates_link_match(monkeypatch):
+    # A MangaUpdates link on the Komga side can be stale or simply wrong
+    # (set by hand, or by another tool like komf) -- if the series it points
+    # at doesn't plausibly look like the tracked manga at all, it must not
+    # be trusted just because the series_id happens to match.
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Correct Title",
+            server_folder="Correct Title",
+            mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/correct-title",
+        )
+    )
+    session.commit()
+
+    series = komga_client.KomgaSeries(
+        id="series-12",
+        library_id="lib-manga",
+        name="A Totally Different Manga",
+        books_count=3,
+        books_read_count=1,
+        mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/correct-title",
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]})
+
+    result = sync_komga_library(session)
+
+    assert result["matched"] == 0
+    assert result["unmatched"] == 1
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_series_id is None
+
+
 def test_komga_sync_matches_by_folder_name_when_no_mu_link(monkeypatch):
     session = _session()
     session.add(

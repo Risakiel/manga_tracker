@@ -83,7 +83,7 @@ def test_resolve_series_falls_back_to_search_when_url_404():
             json={
                 "results": [
                     {"record": {"series_id": 44838842124, "title": "8th Circle Mage Reborn", "url": "u"}},
-                    {"record": {"series_id": 999, "title": "Something Else", "url": "u2"}},
+                    {"record": {"series_id": 999, "title": "8th Circle Mage Reborn Season 2", "url": "u2"}},
                 ]
             },
         )
@@ -91,9 +91,38 @@ def test_resolve_series_falls_back_to_search_when_url_404():
     series, candidates = resolve_series(
         "https://www.mangaupdates.com/series/kljw00c/8th-circle-mage-reborn", "8th Circle Mage Reborn"
     )
-    # Two ambiguous candidates -> no auto-resolution, manual review required.
+    # Two candidates with close-enough scores (a real sequel/remake could
+    # legitimately be the right one) -> no auto-resolution, manual review required.
     assert series is None
     assert len(candidates) == 2
+
+
+@respx.mock
+def test_resolve_series_auto_resolves_a_clear_winner_among_several_candidates():
+    # Real-world case that used to flood the sync log with "manual match
+    # required": MangaUpdates' search almost never returns exactly one
+    # result even for a clean, unambiguous title. One candidate obviously
+    # matching and the rest scoring nowhere close must not force a manual
+    # review.
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(200, json=SAMPLE_SERIES_PAYLOAD)
+    )
+    respx.post("https://api.mangaupdates.com/v1/series/search").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"record": {"series_id": 44838842124, "title": "8th Circle Mage Reborn", "url": "u"}},
+                    {"record": {"series_id": 999, "title": "Something Completely Unrelated", "url": "u2"}},
+                    {"record": {"series_id": 998, "title": "Yet Another Unrelated Title", "url": "u3"}},
+                ]
+            },
+        )
+    )
+    series, candidates = resolve_series("", "8th Circle Mage Reborn")
+    assert series is not None
+    assert candidates == []
+    assert series.series_id == 44838842124
 
 
 @respx.mock

@@ -14,6 +14,7 @@ from typing import Optional
 import httpx
 
 from app.config import settings
+from app.services.matching import best_match_with_margin
 
 BASE_URL = "https://api.mangaupdates.com/v1"
 _SLUG_RE = re.compile(r"/series/([0-9a-z]+)/")
@@ -172,4 +173,16 @@ def resolve_series(
     candidates = search_series(title_hint, client=client)
     if len(candidates) == 1:
         return fetch_series(candidates[0].series_id, client=client), []
+    # MangaUpdates' search is a loose text search, not an exact-title
+    # lookup -- it almost never returns exactly one result even for a
+    # perfectly clean title, which used to mean nearly everything with more
+    # than one hit fell back to "manual match required". Auto-accept the
+    # fuzzy winner instead, as long as it clearly stands out from the
+    # runner-up (best_match_with_margin); a genuinely ambiguous case (two
+    # close scores -- sequels, remakes, the same title from different
+    # sources) still falls through to manual review.
+    match = best_match_with_margin(title_hint, {i: c.title for i, c in enumerate(candidates)})
+    if match is not None:
+        idx, _score = match
+        return fetch_series(candidates[idx].series_id, client=client), []
     return None, candidates
