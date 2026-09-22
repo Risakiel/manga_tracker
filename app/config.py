@@ -22,8 +22,12 @@ class Settings(BaseSettings):
     library_root: Path = Path("/library")
 
     sync_interval_hours: float = 24.0
-    suwayomi_sync_interval_hours: float = 24.0
-    komga_sync_interval_hours: float = 24.0
+    # Suwayomi is where manga actually get added/downloaded -- a short
+    # interval here is what makes a Suwayomi addition show up in
+    # MangaTracker (and, once downloaded, get linked to Komga -- see
+    # scheduler.py, which chains a Komga sync right after this one) without
+    # the user ever needing to click "sync now".
+    suwayomi_sync_interval_hours: float = 0.25
     library_sync_interval_hours: float = 24.0
     enable_scheduler: bool = True
 

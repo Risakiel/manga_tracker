@@ -122,6 +122,25 @@ def list_library_ids(client: Optional[httpx.Client] = None) -> dict[Category, st
             client.close()
 
 
+def trigger_library_scan(library_id: str, client: Optional[httpx.Client] = None) -> None:
+    """Kicks off an async Komga library scan so files a Suwayomi download
+    just finished writing get indexed without waiting on Komga's own
+    internal scan schedule. Komga runs the scan in the background and
+    returns immediately (202) -- this does not wait for it to finish, so a
+    freshly-added series may only show up on the *next* sync run, not this
+    one; callers should treat a failure here as non-fatal to the sync."""
+    owns_client = client is None
+    client = client or _client()
+    try:
+        resp = client.post(f"{_base_url()}/api/v1/libraries/{library_id}/scan")
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise KomgaUnavailable(f"failed to trigger Komga scan for library {library_id}: {exc}") from exc
+    finally:
+        if owns_client:
+            client.close()
+
+
 def _parse_series(node: dict) -> KomgaSeries:
     metadata = node.get("metadata") or {}
     mu_url = None

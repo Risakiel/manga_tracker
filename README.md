@@ -50,8 +50,8 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 | `KOMGA_URL` | URL de base de ton instance Komga | vide (intégration Komga désactivée) |
 | `KOMGA_API_KEY` | Clé API Komga (Settings > API Keys, compte ADMIN requis pour l'écriture) | vide |
 | `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates | 24 |
-| `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi | 24 |
-| `KOMGA_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation Komga | 24 |
+| `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi (voir ci-dessous) | 0.25 (15 min) |
+| `LIBRARY_SYNC_INTERVAL_HOURS` | Fréquence de synchro des "Dossiers serveur" (voir la page Configuration) | 24 |
 | `ENABLE_SCHEDULER` | Désactive les jobs automatiques (sync manuelle uniquement) | true |
 | `LIBRARY_ROOT` | Chemin (côté conteneur) du partage NAS monté en lecture seule | `/library` |
 
@@ -61,6 +61,13 @@ La correspondance entre un manga suivi et sa fiche Komga se fait, dans l'ordre :
 MangaUpdates commun (le plus fiable), puis par nom de dossier exact (même NAS, même
 convention de nommage que Komga), puis par titre approché. Seules les bibliothèques Komga
 nommées `Manga` et `Pornhwa` sont prises en compte, comme pour le partage NAS.
+
+La synchro Komga n'a pas son propre planning : elle s'enchaîne automatiquement juste après
+chaque synchro Suwayomi (donc toutes les `SUWAYOMI_SYNC_INTERVAL_HOURS`), et demande d'abord
+à Komga de rescanner ses bibliothèques avant de récupérer les séries, pour ne pas dépendre du
+scan interne de Komga. Suwayomi reste le point d'entrée pour ajouter/télécharger un manga —
+une fois ajouté là-bas, MangaTracker le récupère puis le relie à Komga automatiquement, sans
+action manuelle.
 
 Le push de métadonnées vers Komga est strictement non-destructif : un champ n'est envoyé
 que s'il est **vide et non verrouillé** côté Komga (jamais s'il a déjà une valeur, qu'elle

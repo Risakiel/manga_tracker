@@ -169,9 +169,14 @@ def test_suwayomi_sync_reports_unavailable_server(monkeypatch):
     assert result["error"] == "SUWAYOMI_URL is not configured"
 
 
-def _patch_komga(monkeypatch, library_ids, series_by_library, updates=None):
+def _patch_komga(monkeypatch, library_ids, series_by_library, updates=None, scans=None):
     monkeypatch.setattr(komga_client, "list_library_ids", lambda client=None: library_ids)
     monkeypatch.setattr(komga_client, "fetch_series", lambda library_id, client=None: series_by_library[library_id])
+    monkeypatch.setattr(
+        komga_client,
+        "trigger_library_scan",
+        lambda library_id, client=None: scans.append(library_id) if scans is not None else None,
+    )
     if updates is not None:
         monkeypatch.setattr(
             komga_client, "update_metadata", lambda series_id, patch, client=None: updates.append((series_id, patch))
@@ -462,6 +467,7 @@ def test_komga_sync_push_goes_through_a_real_authenticated_client(monkeypatch):
     patch_route = respx.patch("http://komga.local:25600/api/v1/series/series-5/metadata").mock(
         return_value=httpx.Response(204)
     )
+    respx.post("http://komga.local:25600/api/v1/libraries/lib-manga/scan").mock(return_value=httpx.Response(202))
 
     result = sync_komga_library(session)
 
@@ -480,3 +486,43 @@ def test_komga_sync_reports_unavailable_server(monkeypatch):
 
     result = sync_komga_library(session)
     assert result["error"] == "KOMGA_URL is not configured"
+
+
+def test_komga_sync_triggers_a_library_scan_before_fetching_series(monkeypatch):
+    # So files a Suwayomi download just finished writing get indexed by
+    # Komga without waiting on its own internal scan schedule.
+    session = _session()
+    scans = []
+    _patch_komga(
+        monkeypatch,
+        {Category.manga: "lib-manga", Category.pornhwa: "lib-pornhwa"},
+        {"lib-manga": [], "lib-pornhwa": []},
+        scans=scans,
+    )
+
+    sync_komga_library(session)
+
+    assert sorted(scans) == ["lib-manga", "lib-pornhwa"]
+
+
+def test_komga_sync_survives_a_failed_scan_trigger(monkeypatch):
+    # Triggering the scan is a latency optimization, not a requirement --
+    # a failure there must not abort the rest of the sync.
+    session = _session()
+    session.add(
+        Manga(category=Category.manga, title_en="Still Synced", server_folder="Still Synced", mangaupdates_url="")
+    )
+    session.commit()
+
+    def _raise(library_id, client=None):
+        raise komga_client.KomgaUnavailable("scan endpoint unreachable")
+
+    monkeypatch.setattr(komga_client, "trigger_library_scan", _raise)
+    series = komga_client.KomgaSeries(
+        id="series-10", library_id="lib-manga", name="Still Synced", books_count=1, books_read_count=0
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]})
+
+    result = sync_komga_library(session)
+
+    assert result["matched"] == 1

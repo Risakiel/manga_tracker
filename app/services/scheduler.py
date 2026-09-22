@@ -27,6 +27,14 @@ def _run_suwayomi_sync() -> None:
     with session_scope() as session:
         result = sync_suwayomi_library(session)
         logger.info("scheduled Suwayomi sync done: %s", result)
+    # Chained rather than independently scheduled: a manga added in Suwayomi
+    # only has anything for Komga to find once this same run has created (or
+    # updated) it, so running Komga right after -- on Suwayomi's short
+    # interval -- gets it linked as soon as the download + Komga's own scan
+    # (triggered by sync_komga_library itself) have caught up, instead of
+    # waiting on a separately-scheduled, likely slower interval.
+    if settings.komga_url:
+        _run_komga_sync()
 
 
 def _run_komga_sync() -> None:
@@ -64,14 +72,6 @@ def start_scheduler() -> BackgroundScheduler | None:
         id="suwayomi_sync",
         next_run_time=None,
     )
-    if settings.komga_url:
-        scheduler.add_job(
-            _run_komga_sync,
-            "interval",
-            hours=settings.komga_sync_interval_hours,
-            id="komga_sync",
-            next_run_time=None,
-        )
     if library_client.is_mounted():
         scheduler.add_job(
             _run_library_sync,
@@ -86,7 +86,7 @@ def start_scheduler() -> BackgroundScheduler | None:
         "scheduler started: mangaupdates every %sh, suwayomi every %sh, komga %s, server-folders %s",
         settings.sync_interval_hours,
         settings.suwayomi_sync_interval_hours,
-        f"every {settings.komga_sync_interval_hours}h" if settings.komga_url else "disabled (no KOMGA_URL)",
+        "chained right after every Suwayomi sync" if settings.komga_url else "disabled (no KOMGA_URL)",
         f"every {settings.library_sync_interval_hours}h"
         if library_client.is_mounted()
         else "disabled (NAS not mounted)",

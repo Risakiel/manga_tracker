@@ -330,6 +330,17 @@ def sync_komga_library(
         session.commit()
         return {"matched": 0, "unmatched": 0, "pushed": 0, "error": str(exc)}
 
+    # Best-effort: ask Komga to (re)scan now rather than wait on its own
+    # internal schedule, so a Suwayomi download that just finished gets
+    # picked up sooner. Async on Komga's side, so it may only be reflected
+    # on the *next* sync run -- a failure here must not abort this one.
+    with komga_client.open_client() as scan_client:
+        for library_id in library_ids.values():
+            try:
+                komga_client.trigger_library_scan(library_id, client=scan_client)
+            except komga_client.KomgaUnavailable as exc:
+                logger.warning("could not trigger Komga library scan (%s): %s", library_id, exc)
+
     mangas = session.exec(select(Manga)).all()
     by_folder = {(m.category, normalize_title(m.server_folder)): m for m in mangas}
     by_mu_id: dict[int, Manga] = {}
