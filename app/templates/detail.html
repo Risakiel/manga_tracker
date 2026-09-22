@@ -92,21 +92,21 @@
     </p>
     <div style="overflow-x:auto">
     <table>
-        <thead><tr><th>Source</th><th>Dernier chapitre</th><th>Lien</th><th></th></tr></thead>
+        <thead><tr><th>Source</th><th>Dernier chapitre</th><th style="width:40%">Lien</th><th></th></tr></thead>
         <tbody>
         <tr>
             <td>MangaUpdates {% if chapter_source == "mangaupdates" %}⭐{% endif %}</td>
             <td>{{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "—" }}</td>
             <td>
-                <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url" style="display:flex; gap:0.5rem; margin:0">
-                    <input type="url" name="mangaupdates_url" value="{{ manga.mangaupdates_url }}" placeholder="Lien MangaUpdates" style="flex:1">
+                <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url" class="source-link-form">
+                    <input type="url" name="mangaupdates_url" value="{{ manga.mangaupdates_url }}" placeholder="Lien MangaUpdates">
                     <button type="submit" class="secondary">Enregistrer + resync</button>
                 </form>
-                {% if manga.mangaupdates_url %}<small><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
+                {% if manga.mangaupdates_url %}<small class="source-link-view"><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
             </td>
-            <td>
+            <td class="source-action-cell">
                 {% if chapter_source != "mangaupdates" %}
-                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source" style="margin:0">
+                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source">
                     <input type="hidden" name="source" value="mangaupdates">
                     <button type="submit" class="outline secondary">Utiliser pour le retard</button>
                 </form>
@@ -117,11 +117,11 @@
             <td>AniList</td>
             <td>{{ manga.anilist_latest_chapter | int if manga.anilist_latest_chapter is not none else "—" }}</td>
             <td>
-                <form method="post" action="/manga/{{ manga.id }}/anilist-url" style="display:flex; gap:0.5rem; margin:0">
-                    <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList" style="flex:1">
+                <form method="post" action="/manga/{{ manga.id }}/anilist-url" class="source-link-form">
+                    <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList">
                     <button type="submit" class="secondary">Enregistrer + resync</button>
                 </form>
-                {% if manga.anilist_url %}<small><a href="{{ manga.anilist_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
+                {% if manga.anilist_url %}<small class="source-link-view"><a href="{{ manga.anilist_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
             </td>
             <td></td>
         </tr>
@@ -129,15 +129,15 @@
             <td>MangaDex {% if chapter_source == "mangadex" %}⭐{% endif %}</td>
             <td>{{ manga.mangadex_latest_chapter | int if manga.mangadex_latest_chapter is not none else "—" }}</td>
             <td>
-                <form method="post" action="/manga/{{ manga.id }}/mangadex-url" style="display:flex; gap:0.5rem; margin:0">
-                    <input type="url" name="mangadex_url" value="{{ manga.mangadex_url or '' }}" placeholder="Lien MangaDex" style="flex:1">
+                <form method="post" action="/manga/{{ manga.id }}/mangadex-url" class="source-link-form">
+                    <input type="url" name="mangadex_url" value="{{ manga.mangadex_url or '' }}" placeholder="Lien MangaDex">
                     <button type="submit" class="secondary">Enregistrer + resync</button>
                 </form>
-                {% if manga.mangadex_url %}<small><a href="{{ manga.mangadex_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
+                {% if manga.mangadex_url %}<small class="source-link-view"><a href="{{ manga.mangadex_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
             </td>
-            <td>
+            <td class="source-action-cell">
                 {% if chapter_source != "mangadex" %}
-                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source" style="margin:0">
+                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source">
                     <input type="hidden" name="source" value="mangadex">
                     <button type="submit" class="outline secondary">Utiliser pour le retard</button>
                 </form>

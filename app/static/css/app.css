@@ -404,3 +404,42 @@ table.mangas td, table.mangas th {
     margin: 0;
     color: var(--pico-muted-color);
 }
+
+/* Per-source "link + resync" form in the manga detail page's "Sources
+   externes" table -- Pico buttons default to width:100%, which inside a
+   table cell fights the input for space, so the button is forced back to
+   its own text size and centered under the (full-width) input. */
+.source-link-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+}
+
+.source-link-form input {
+    width: 100%;
+}
+
+.source-link-form button {
+    width: auto;
+}
+
+.source-link-view {
+    display: block;
+    text-align: center;
+    margin-top: 0.25rem;
+}
+
+.source-action-cell {
+    text-align: center;
+}
+
+.source-action-cell form {
+    display: inline-block;
+    margin: 0;
+}
+
+.source-action-cell button {
+    width: auto;
+}
