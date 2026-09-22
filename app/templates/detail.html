@@ -3,7 +3,7 @@
 {% block page_title %}{{ manga.title_en }}{% endblock %}
 {% block content %}
 
-<a href="/" class="detail-back-link" data-discover="true">&larr; Retour</a>
+<a href="/" class="detail-back-link" data-discover="true" onclick="if (window.history.length > 1) { event.preventDefault(); history.back(); }">&larr; Retour</a>
 
 <div class="detail-grid">
     <div>
