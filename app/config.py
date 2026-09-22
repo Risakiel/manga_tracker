@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # exactly two subdirectories: "Manga" and "Pornhwa".
     library_root: Path = Path("/library")
 
+    # How often every tracked manga is re-checked against MangaUpdates,
+    # falling through to MangaDex/AniList for whichever ones still have no
+    # usable chapter count (see sync_all_manga_sources) -- an already
+    # fully-linked manga costs nothing extra beyond its MangaUpdates re-check.
     sync_interval_hours: float = 24.0
     # Suwayomi is where manga actually get added/downloaded -- a short
     # interval here is what makes a Suwayomi addition show up in

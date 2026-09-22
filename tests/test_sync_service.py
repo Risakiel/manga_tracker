@@ -5,7 +5,12 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app.config import settings
 from app.models import Category, ChapterSource, Manga
 from app.services import anilist_client, komga_client, mangadex_client, mangaupdates_client, suwayomi_client
-from app.services.sync_service import sync_komga_library, sync_manga_all_sources, sync_suwayomi_library
+from app.services.sync_service import (
+    sync_all_manga_sources,
+    sync_komga_library,
+    sync_manga_all_sources,
+    sync_suwayomi_library,
+)
 
 
 def _session():
@@ -668,3 +673,49 @@ def test_sync_manga_all_sources_leaves_every_source_for_manual_review_when_all_f
     assert manga.anilist_needs_manual_match is False  # AniList found zero candidates -> nothing to review
     assert mangadex_calls == [1]
     assert manga.mangadex_needs_manual_match is True
+
+
+def test_sync_all_manga_sources_runs_the_full_cascade_for_every_manga(monkeypatch):
+    # Regression: the dashboard's "Tout resynchroniser" and the scheduled
+    # job used to only ever call sync_manga_with_mangaupdates -- confirm
+    # the bulk entry point now runs the same MangaDex/AniList fallback as
+    # the per-manga "Resynchroniser" button.
+    session = _session()
+    linked = Manga(category=Category.manga, title_en="Already Linked", server_folder="Already Linked", mangaupdates_url="")
+    unlinked = Manga(category=Category.manga, title_en="Needs Fallback", server_folder="Needs Fallback", mangaupdates_url="")
+    session.add(linked)
+    session.add(unlinked)
+    session.commit()
+
+    def _fake_mu_resolve(url, title, client=None):
+        if title == "Already Linked":
+            return (
+                mangaupdates_client.MangaUpdatesSeries(
+                    series_id=1, title=title, url="https://www.mangaupdates.com/series/kljw00c/x", latest_chapter=10
+                ),
+                [],
+            )
+        return None, []
+
+    monkeypatch.setattr(mangaupdates_client, "resolve_series", _fake_mu_resolve)
+    mangadex_calls = []
+
+    def _fake_mangadex_resolve(*a, **k):
+        mangadex_calls.append(1)
+        return (
+            mangadex_client.MangaDexManga(
+                id="uuid-1", title="Needs Fallback", url="https://mangadex.org/title/uuid-1/x", latest_chapter=7
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(mangadex_client, "resolve_series", _fake_mangadex_resolve)
+    monkeypatch.setattr(anilist_client, "resolve_series", lambda *a, **k: (None, []))
+    monkeypatch.setattr(anilist_client, "search_media", lambda *a, **k: None)
+
+    count = sync_all_manga_sources(session)
+
+    assert count == 2
+    assert linked.mangaupdates_id == 1
+    assert mangadex_calls == [1]  # only the manga MangaUpdates failed for
+    assert unlinked.mangadex_latest_chapter == 7

@@ -54,7 +54,7 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 | `SUWAYOMI_USERNAME` / `SUWAYOMI_PASSWORD` | Si Basic Auth activé sur Suwayomi | vide |
 | `KOMGA_URL` | URL de base de ton instance Komga | vide (intégration Komga désactivée) |
 | `KOMGA_API_KEY` | Clé API Komga (Settings > API Keys, compte ADMIN requis pour l'écriture) | vide |
-| `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates | 24 |
+| `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates (+ MangaDex/AniList en repli) | 24 |
 | `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi (voir ci-dessous) | 0.25 (15 min) |
 | `LIBRARY_SYNC_INTERVAL_HOURS` | Fréquence de synchro des "Dossiers serveur" (voir la page Configuration) | 24 |
 | `ENABLE_SCHEDULER` | Désactive les jobs automatiques (sync manuelle uniquement) | true |

@@ -38,7 +38,7 @@ templates.env.globals["static_version"] = str(int(time.time()))
 # minutes (one HTTP request per manga, throttled), so the dashboard polls
 # these instead of leaving the user staring at a button that looks like it
 # did nothing. A single-process homelab app doesn't need this in the DB.
-_mu_sync_progress = {"running": False, "total": 0, "done": 0}
+_full_sync_progress = {"running": False, "total": 0, "done": 0}
 _suwayomi_sync_progress = {"running": False, "total": 0, "done": 0, "matched": 0, "created": 0, "error": None}
 _komga_sync_progress = {
     "running": False,
@@ -143,7 +143,7 @@ def dashboard(
             "statuses": [s.value for s in Status],
             "suwayomi_categories": _distinct_suwayomi_categories(session),
             "flash": request.query_params.get("flash"),
-            "progress": _mu_sync_progress,
+            "progress": _full_sync_progress,
             "suwayomi_progress": _suwayomi_sync_progress,
         },
     )
@@ -353,28 +353,28 @@ def manga_set_preferred_chapter_source(
 def sync_all(background_tasks: BackgroundTasks):
     from app.database import session_scope
 
-    if _mu_sync_progress["running"]:
+    if _full_sync_progress["running"]:
         return RedirectResponse("/?flash=Une+synchronisation+est+déjà+en+cours...", status_code=303)
 
     def _job():
         with session_scope() as session:
             mangas = session.exec(select(Manga)).all()
-            _mu_sync_progress.update(running=True, total=len(mangas), done=0)
+            _full_sync_progress.update(running=True, total=len(mangas), done=0)
             try:
                 with httpx.Client(timeout=15.0) as client:
                     for manga in mangas:
-                        sync_manga_with_mangaupdates(session, manga, client=client)
-                        _mu_sync_progress["done"] += 1
+                        sync_manga_all_sources(session, manga, client=client)
+                        _full_sync_progress["done"] += 1
             finally:
-                _mu_sync_progress["running"] = False
+                _full_sync_progress["running"] = False
 
     background_tasks.add_task(_job)
-    return RedirectResponse("/?flash=Synchronisation+MangaUpdates+lancée+en+arrière-plan...", status_code=303)
+    return RedirectResponse("/?flash=Synchronisation+lancée+en+arrière-plan...", status_code=303)
 
 
 @router.get("/partials/sync-progress", response_class=HTMLResponse)
 def sync_progress(request: Request):
-    return templates.TemplateResponse(request, "_sync_progress.html", {"progress": _mu_sync_progress})
+    return templates.TemplateResponse(request, "_sync_progress.html", {"progress": _full_sync_progress})
 
 
 @router.post("/suwayomi/sync")
