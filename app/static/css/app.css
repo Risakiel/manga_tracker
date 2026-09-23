@@ -700,21 +700,38 @@ body {
 
 .stat-tile-value-lg .badge,
 .stat-tile-value-lg .tag {
-    font-size: 1.1rem;
-    padding: 0.35rem 0.9rem;
+    font-size: 2rem;
+    padding: 0.5rem 1.2rem;
 }
 
+.stat-tile-value-xl {
+    font-size: 3rem;
+}
+
+/* Row 1/2 tiles: the title stays pinned to the top (centered
+   horizontally), while everything else -- the actual field value --
+   centers in the remaining space below it, both axes. */
 .stat-tile-center {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     text-align: center;
     gap: 0.3rem;
 }
 
 .stat-tile-center .stat-tile-label {
+    font-size: 2.4rem;
     margin-bottom: 0;
+}
+
+.stat-tile-center-body {
+    display: flex;
+    flex: 1;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
 }
 
 .stat-tile-sub {
@@ -780,5 +797,25 @@ body {
 @media (max-width: 700px) {
     .bio-grid {
         grid-template-columns: 1fr;
+    }
+
+    /* The large row 1/2 title/value sizes overflow a narrow single-column
+       phone width -- scale them back down there. */
+    .stat-tile-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-tile-center .stat-tile-label {
+        font-size: 1.3rem;
+    }
+
+    .stat-tile-value-xl {
+        font-size: 2rem;
+    }
+
+    .stat-tile-value-lg .badge,
+    .stat-tile-value-lg .tag {
+        font-size: 1.3rem;
+        padding: 0.4rem 0.9rem;
     }
 }

@@ -15,49 +15,57 @@
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Type</div>
-                <form method="post" action="/manga/{{ manga.id }}/category" class="stat-tile-form">
-                    <select name="category" onchange="this.form.requestSubmit()">
-                        <option value="manga" {{ "selected" if manga.category.value == "manga" }}>Manga</option>
-                        <option value="pornhwa" {{ "selected" if manga.category.value == "pornhwa" }}>Pornhwa</option>
-                    </select>
-                </form>
+                <div class="stat-tile-center-body">
+                    <form method="post" action="/manga/{{ manga.id }}/category" class="stat-tile-form">
+                        <select name="category" onchange="this.form.requestSubmit()">
+                            <option value="manga" {{ "selected" if manga.category.value == "manga" }}>Manga</option>
+                            <option value="pornhwa" {{ "selected" if manga.category.value == "pornhwa" }}>Pornhwa</option>
+                        </select>
+                    </form>
+                </div>
             </div>
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Dossier serveur</div>
-                <form method="post" action="/manga/{{ manga.id }}/server-folder" class="stat-tile-form">
-                    {% if folder_options %}
-                    <select name="server_folder">
-                        {% if manga.server_folder not in folder_options %}
-                        <option value="{{ manga.server_folder }}" selected>{{ folder_prefix }}/{{ manga.server_folder }} (actuel, introuvable)</option>
+                <div class="stat-tile-center-body">
+                    <form method="post" action="/manga/{{ manga.id }}/server-folder" class="stat-tile-form">
+                        {% if folder_options %}
+                        <select name="server_folder">
+                            {% if manga.server_folder not in folder_options %}
+                            <option value="{{ manga.server_folder }}" selected>{{ folder_prefix }}/{{ manga.server_folder }} (actuel, introuvable)</option>
+                            {% endif %}
+                            {% for f in folder_options %}
+                            <option value="{{ f }}" {{ "selected" if f == manga.server_folder }}>{{ folder_prefix }}/{{ f }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" name="server_folder" value="{{ manga.server_folder }}" required>
+                        <small>Partage NAS non monté ({{ library_root }}) — saisie libre.</small>
                         {% endif %}
-                        {% for f in folder_options %}
-                        <option value="{{ f }}" {{ "selected" if f == manga.server_folder }}>{{ folder_prefix }}/{{ f }}</option>
-                        {% endfor %}
-                    </select>
-                    {% else %}
-                    <input type="text" name="server_folder" value="{{ manga.server_folder }}" required>
-                    <small>Partage NAS non monté ({{ library_root }}) — saisie libre.</small>
+                        <button type="submit" class="btn-sync">Enregistrer</button>
+                    </form>
+                    {% if suggested_folder %}
+                    <form method="post" action="/manga/{{ manga.id }}/server-folder" class="stat-tile-form" style="margin-top:0.4rem">
+                        <input type="hidden" name="server_folder" value="{{ suggested_folder }}">
+                        <button type="submit" class="outline secondary" style="font-size:0.75rem">Suggestion : {{ folder_prefix }}/{{ suggested_folder }}</button>
+                    </form>
                     {% endif %}
-                    <button type="submit" class="btn-sync">Enregistrer</button>
-                </form>
-                {% if suggested_folder %}
-                <form method="post" action="/manga/{{ manga.id }}/server-folder" class="stat-tile-form" style="margin-top:0.4rem">
-                    <input type="hidden" name="server_folder" value="{{ suggested_folder }}">
-                    <button type="submit" class="outline secondary" style="font-size:0.75rem">Suggestion : {{ folder_prefix }}/{{ suggested_folder }}</button>
-                </form>
-                {% endif %}
+                </div>
             </div>
             {% if manga.suwayomi_categories %}
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Catégories Suwayomi</div>
-                <div class="stat-tile-value stat-tile-value-lg manga-row-tags">
-                    {% for cat in manga.suwayomi_categories %}<span class="tag {{ cat | tag_color }}">{{ cat }}</span>{% endfor %}
+                <div class="stat-tile-center-body">
+                    <div class="stat-tile-value stat-tile-value-lg manga-row-tags">
+                        {% for cat in manga.suwayomi_categories %}<span class="tag {{ cat | tag_color }}">{{ cat }}</span>{% endfor %}
+                    </div>
                 </div>
             </div>
             {% endif %}
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Statut</div>
-                <div class="stat-tile-value stat-tile-value-lg"><span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span></div>
+                <div class="stat-tile-center-body">
+                    <div class="stat-tile-value stat-tile-value-lg"><span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span></div>
+                </div>
             </div>
         </div>
 
@@ -65,30 +73,38 @@
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Chapitres Suwayomi</div>
-                <div class="stat-tile-value">{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}</div>
+                <div class="stat-tile-center-body">
+                    <div class="stat-tile-value stat-tile-value-xl">{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}</div>
+                </div>
             </div>
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Dernier chapitre retenu</div>
-                <div class="stat-tile-value">{{ manga.authoritative_latest_chapter | int if manga.authoritative_latest_chapter is not none else "?" }}</div>
-                {% if manga.chapters_behind %}<div class="stat-tile-sub behind-badge">en retard de {{ manga.chapters_behind | int }}</div>{% endif %}
+                <div class="stat-tile-center-body">
+                    <div class="stat-tile-value stat-tile-value-xl">{{ manga.authoritative_latest_chapter | int if manga.authoritative_latest_chapter is not none else "?" }}</div>
+                    {% if manga.chapters_behind %}<div class="stat-tile-sub behind-badge">en retard de {{ manga.chapters_behind | int }}</div>{% endif %}
+                </div>
             </div>
             {% if manga.komga_series_id %}
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Lu sur Komga</div>
-                <div class="stat-tile-value">{{ manga.komga_books_read_count }} / {{ manga.komga_books_count }}</div>
-                {% if manga.komga_unread_count %}<div class="stat-tile-sub">{{ manga.komga_unread_count }} non lu(s)</div>{% endif %}
-                {% if komga_web_url %}<div class="stat-tile-sub"><a href="{{ komga_web_url }}" target="_blank" rel="noopener">Voir sur Komga ↗</a></div>{% endif %}
+                <div class="stat-tile-center-body">
+                    <div class="stat-tile-value">{{ manga.komga_books_read_count }} / {{ manga.komga_books_count }}</div>
+                    {% if manga.komga_unread_count %}<div class="stat-tile-sub">{{ manga.komga_unread_count }} non lu(s)</div>{% endif %}
+                    {% if komga_web_url %}<div class="stat-tile-sub"><a href="{{ komga_web_url }}" target="_blank" rel="noopener">Voir sur Komga ↗</a></div>{% endif %}
+                </div>
             </div>
             {% endif %}
             <div class="stat-tile stat-tile-center">
                 <div class="stat-tile-label">Dernière synchro</div>
-                <div class="stat-tile-value" style="font-size:1rem">{{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</div>
-                <form method="post" action="/manga/{{ manga.id }}/sync" style="margin-top:0.5rem">
-                    <button type="submit" class="btn-sync btn-sync-block">
-                        {% include "_sync_icon.html" %}
-                        <span>Resynchroniser (toutes les sources)</span>
-                    </button>
-                </form>
+                <div class="stat-tile-center-body">
+                    <div class="stat-tile-value" style="font-size:1rem">{{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</div>
+                    <form method="post" action="/manga/{{ manga.id }}/sync" style="margin-top:0.5rem">
+                        <button type="submit" class="btn-sync btn-sync-block">
+                            {% include "_sync_icon.html" %}
+                            <span>Resynchroniser (toutes les sources)</span>
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
         {% if manga.sync_error %}<p style="color:#f87171">{{ manga.sync_error }}</p>{% endif %}
