@@ -50,7 +50,7 @@
         </div>
     </a>
     <form method="post" action="/manga/{{ manga.id }}/sync" class="manga-row-action">
-        <button class="btn-sync" type="submit" title="Resynchroniser">🔄</button>
+        <button class="btn-sync" type="submit" title="Resynchroniser">{% include "_sync_icon.html" %}<span>Sync</span></button>
     </form>
 </article>
 {% else %}

@@ -43,12 +43,14 @@
 <div class="grid">
     <form method="post" action="/sync-all" style="margin:0">
         <button type="submit" class="btn-sync btn-sync-block" {{ "disabled" if progress.running }}>
-            🔄 Tout resynchroniser (toutes les sources)
+            {% include "_sync_icon.html" %}
+            <span>Tout resynchroniser (toutes les sources)</span>
         </button>
     </form>
     <form method="post" action="/suwayomi/sync" style="margin:0">
         <button type="submit" class="btn-sync btn-sync-block" {{ "disabled" if suwayomi_progress.running }}>
-            🔗 Synchroniser Suwayomi
+            {% include "_sync_icon.html" %}
+            <span>Synchroniser Suwayomi</span>
         </button>
     </form>
 </div>

@@ -417,6 +417,12 @@ body {
     font-size: 0.85rem;
 }
 
+.btn-sync-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+}
+
 /* Dashboard manga list -- card-row styling adapted from JellyGlance's
    .library-list-row (border-radius/gradient/shadow values read directly
    from its computed styles), kept full-width and dense enough to stay
@@ -508,8 +514,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    min-width: 10rem;
-    flex: 1 1 10rem;
+    min-width: 8rem;
+    flex: 1 1 8rem;
 }
 
 .manga-row-name {
@@ -530,8 +536,10 @@ body {
 .manga-row-stat {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 0.2rem;
     flex: none;
+    text-align: center;
 }
 
 .manga-row-stat .stat-value {
@@ -547,9 +555,21 @@ body {
 .col-behind { width: 3rem; }
 .col-sync { width: 5.5rem; }
 
+.manga-list-header .col-type,
+.manga-list-header .col-category,
+.manga-list-header .col-status,
+.manga-list-header .col-chapters,
+.manga-list-header .col-latest,
+.manga-list-header .col-komga,
+.manga-list-header .col-behind,
+.manga-list-header .col-sync {
+    text-align: center;
+}
+
 .manga-row-tags {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0.25rem;
 }
 
@@ -653,8 +673,9 @@ body {
 .stat-tile-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    align-items: start;
     gap: 0.75rem;
-    margin: 1rem 0 1.5rem;
+    margin: 0 0 0.75rem;
 }
 
 .stat-tile {
@@ -681,4 +702,27 @@ body {
     font-size: 0.78rem;
     color: var(--muted-text-color);
     margin-top: 0.25rem;
+}
+
+.stat-tile-value-text {
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.stat-tile-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.stat-tile-form select,
+.stat-tile-form input {
+    margin: 0;
+}
+
+.stat-tile-form button {
+    width: auto;
+    align-self: flex-start;
 }
