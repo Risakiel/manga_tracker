@@ -361,8 +361,130 @@ body {
     font-weight: bold;
 }
 
-table.mangas td, table.mangas th {
-    vertical-align: middle;
+/* Dashboard manga list -- card-row styling adapted from JellyGlance's
+   .library-list-row (border-radius/gradient/shadow values read directly
+   from its computed styles), kept full-width and dense enough to stay
+   usable at a few hundred rows instead of JellyGlance's handful of
+   libraries. */
+.manga-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.manga-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: linear-gradient(145deg, rgba(var(--primary-rgb), 0.09), rgba(255, 255, 255, 0.027));
+    border: 1px solid var(--surface-border-color);
+    border-radius: 0.7rem;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+    padding: 0.4rem 0.6rem 0.4rem 0.4rem;
+    min-height: 3.75rem;
+    transition: border-color 0.15s ease;
+}
+
+.manga-row:hover {
+    border-color: var(--primary-color);
+}
+
+.manga-row.needs-match-row {
+    outline: 2px solid #dc2626;
+    outline-offset: -2px;
+}
+
+.manga-row-main {
+    display: grid;
+    grid-template-columns: 3.2rem minmax(11rem, 1.3fr) minmax(18rem, 2.4fr);
+    align-items: center;
+    gap: 0.85rem;
+    flex: 1;
+    min-width: 0;
+    color: var(--text-color);
+    text-decoration: none;
+}
+
+.manga-row-cover {
+    width: 3.2rem;
+    height: 4.4rem;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    background: var(--tertiary-background-color);
+    flex: none;
+}
+
+.manga-row-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.manga-row-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.manga-row-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manga-row-meta {
+    font-size: 0.78rem;
+    color: var(--subtle-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manga-row-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.1rem;
+}
+
+.manga-row .stat-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 4.5rem;
+}
+
+.manga-row .stat-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--subtle-text-color);
+}
+
+.manga-row .stat-value {
+    font-size: 0.85rem;
+}
+
+.manga-row-action {
+    margin: 0;
+    flex: none;
+}
+
+.manga-row-action button {
+    width: auto;
+}
+
+@media (max-width: 760px) {
+    .manga-row-main {
+        grid-template-columns: 3.2rem 1fr;
+        grid-template-areas: "cover title" "stats stats";
+        row-gap: 0.5rem;
+    }
+
+    .manga-row-cover { grid-area: cover; }
+    .manga-row-title { grid-area: title; }
+    .manga-row-stats { grid-area: stats; }
 }
 
 .suwayomi-categories {
@@ -442,4 +564,39 @@ table.mangas td, table.mangas th {
 
 .source-action-cell button {
     width: auto;
+}
+
+/* Manga detail page stat cards -- same visual language as JellyGlance's
+   "Statistiques de la médiathèque" tiles. */
+.stat-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0 1.5rem;
+}
+
+.stat-tile {
+    background: var(--secondary-background-color);
+    border: 1px solid var(--surface-border-color);
+    border-radius: 0.9rem;
+    padding: 0.9rem 1rem;
+}
+
+.stat-tile-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--subtle-text-color);
+    margin-bottom: 0.3rem;
+}
+
+.stat-tile-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.stat-tile-sub {
+    font-size: 0.78rem;
+    color: var(--muted-text-color);
+    margin-top: 0.25rem;
 }
