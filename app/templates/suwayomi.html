@@ -11,7 +11,7 @@
 </p>
 
 <form method="post" action="/suwayomi/sync">
-    <button type="submit" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
+    <button type="submit" class="btn-sync btn-sync-block" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
 </form>
 {% include "_suwayomi_progress.html" %}
 

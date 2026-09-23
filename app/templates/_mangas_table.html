@@ -1,3 +1,16 @@
+<div class="manga-list-header">
+    <span class="col-spacer"></span>
+    <span class="col-name">Titre</span>
+    <span class="col-type">Type</span>
+    <span class="col-category">Catégorie</span>
+    <span class="col-status">Statut</span>
+    <span class="col-chapters">Chap. Suwayomi</span>
+    <span class="col-latest">Dernier ch.</span>
+    <span class="col-komga">Komga</span>
+    <span class="col-behind">Retard</span>
+    <span class="col-sync">Dernière sync</span>
+    <span class="col-action-spacer"></span>
+</div>
 <div class="manga-list" id="mangas-list">
 {% for manga in mangas %}
 <article class="manga-row {{ 'needs-match-row' if manga.needs_manual_match }}">
@@ -7,33 +20,37 @@
         </div>
         <div class="manga-row-title">
             <span class="manga-row-name">{{ manga.title_en }}</span>
-            <span class="manga-row-meta">
-                {{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}
-                {%- if manga.suwayomi_categories %} · {{ manga.suwayomi_categories | join(", ") }}{% endif %}
-                {%- if manga.needs_manual_match %} · ⚠️ match manuel requis{% endif %}
-            </span>
+            {% if manga.needs_manual_match %}<span class="manga-row-meta">⚠️ match manuel requis</span>{% endif %}
         </div>
-        <div class="manga-row-stats">
-            <div class="stat-block">
-                <span class="stat-label">Statut</span>
-                <span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span>
+        <div class="manga-row-stat col-type">
+            <span class="stat-value">{{ "Pornhwa" if manga.category.value == "pornhwa" else "Manga" }}</span>
+        </div>
+        <div class="manga-row-stat col-category">
+            <div class="manga-row-tags">
+                {% for cat in manga.suwayomi_categories %}<span class="tag {{ cat | tag_color }}">{{ cat }}</span>{% endfor %}
             </div>
-            <div class="stat-block">
-                <span class="stat-label">Chapitres</span>
-                <span class="stat-value">{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }} / {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "?" }}</span>
-            </div>
-            <div class="stat-block">
-                <span class="stat-label">Retard</span>
-                <span class="stat-value">{% if manga.chapters_behind %}<span class="behind-badge">{{ manga.chapters_behind | int }}</span>{% else %}—{% endif %}</span>
-            </div>
-            <div class="stat-block">
-                <span class="stat-label">Dernière sync</span>
-                <span class="stat-value">{{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</span>
-            </div>
+        </div>
+        <div class="manga-row-stat col-status">
+            <span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span>
+        </div>
+        <div class="manga-row-stat col-chapters">
+            <span class="stat-value">{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}</span>
+        </div>
+        <div class="manga-row-stat col-latest">
+            <span class="stat-value">{{ manga.authoritative_latest_chapter | int if manga.authoritative_latest_chapter is not none else "?" }}</span>
+        </div>
+        <div class="manga-row-stat col-komga">
+            <span class="stat-value">{% if manga.komga_series_id %}{{ manga.komga_books_read_count }} / {{ manga.komga_books_count }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="manga-row-stat col-behind">
+            <span class="stat-value">{% if manga.chapters_behind %}<span class="behind-badge">{{ manga.chapters_behind | int }}</span>{% else %}—{% endif %}</span>
+        </div>
+        <div class="manga-row-stat col-sync">
+            <span class="stat-value">{{ manga.last_synced_at.strftime("%Y-%m-%d %H:%M") if manga.last_synced_at else "jamais" }}</span>
         </div>
     </a>
     <form method="post" action="/manga/{{ manga.id }}/sync" class="manga-row-action">
-        <button class="outline secondary" type="submit" title="Resynchroniser">🔄</button>
+        <button class="btn-sync" type="submit" title="Resynchroniser">🔄</button>
     </form>
 </article>
 {% else %}

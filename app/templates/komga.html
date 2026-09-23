@@ -24,7 +24,7 @@
 <article style="color:#f87171">KOMGA_URL n'est pas configuré — voir le README pour l'activer.</article>
 {% else %}
 <form method="post" action="/komga/sync">
-    <button type="submit" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
+    <button type="submit" class="btn-sync btn-sync-block" {{ "disabled" if progress.running }}>🔄 Synchroniser maintenant</button>
 </form>
 {% include "_komga_progress.html" %}
 

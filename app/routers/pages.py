@@ -34,6 +34,19 @@ templates = Jinja2Templates(directory="app/templates")
 # files at the same path -- Unraid restarts the container on every update.
 templates.env.globals["static_version"] = str(int(time.time()))
 
+# Suwayomi categories are freeform user-created labels (not a fixed enum
+# like Status), so their tag color is derived deterministically from the
+# name itself -- the same category always gets the same color, without a
+# hardcoded name->color map that would break on a category we've never seen.
+_TAG_PALETTE = ["tag-blue", "tag-teal", "tag-purple", "tag-amber", "tag-pink", "tag-green"]
+
+
+def _tag_color(name: str) -> str:
+    return _TAG_PALETTE[sum(ord(c) for c in name) % len(_TAG_PALETTE)]
+
+
+templates.env.filters["tag_color"] = _tag_color
+
 # In-memory progress for the bulk background jobs -- all take several
 # minutes (one HTTP request per manga, throttled), so the dashboard polls
 # these instead of leaving the user staring at a button that looks like it

@@ -11,21 +11,6 @@
         {% if manga.cover_url %}<img class="detail-cover" src="{{ manga.cover_url }}" alt="">{% endif %}
     </div>
     <div>
-        <p>
-            <span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span>
-        </p>
-        <form method="post" action="/manga/{{ manga.id }}/category" style="display:flex; align-items:center; gap:0.5rem; max-width:16rem">
-            <label style="flex:1; margin:0">
-                Type
-                <select name="category" onchange="this.form.requestSubmit()">
-                    <option value="manga" {{ "selected" if manga.category.value == "manga" }}>Manga</option>
-                    <option value="pornhwa" {{ "selected" if manga.category.value == "pornhwa" }}>Pornhwa</option>
-                </select>
-            </label>
-        </form>
-        {% if manga.suwayomi_categories %}
-        <p><strong>Catégories Suwayomi :</strong> {{ manga.suwayomi_categories | join(", ") }}</p>
-        {% endif %}
         <form method="post" action="/manga/{{ manga.id }}/server-folder">
             <label>
                 Dossier serveur
@@ -56,6 +41,27 @@
         <p><strong>Titres alternatifs :</strong> {{ manga.alt_titles | join(" · ") }}</p>
         <div class="stat-tile-grid">
             <div class="stat-tile">
+                <div class="stat-tile-label">Statut</div>
+                <div class="stat-tile-value"><span class="badge badge-{{ manga.status.value }}">{{ manga.status.value }}</span></div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-tile-label">Type</div>
+                <form method="post" action="/manga/{{ manga.id }}/category" style="margin:0">
+                    <select name="category" onchange="this.form.requestSubmit()" style="margin:0">
+                        <option value="manga" {{ "selected" if manga.category.value == "manga" }}>Manga</option>
+                        <option value="pornhwa" {{ "selected" if manga.category.value == "pornhwa" }}>Pornhwa</option>
+                    </select>
+                </form>
+            </div>
+            {% if manga.suwayomi_categories %}
+            <div class="stat-tile">
+                <div class="stat-tile-label">Catégories Suwayomi</div>
+                <div class="stat-tile-value manga-row-tags">
+                    {% for cat in manga.suwayomi_categories %}<span class="tag {{ cat | tag_color }}">{{ cat }}</span>{% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            <div class="stat-tile">
                 <div class="stat-tile-label">Chapitres Suwayomi</div>
                 <div class="stat-tile-value">{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}</div>
             </div>
@@ -80,7 +86,7 @@
         {% if manga.sync_error %}<p style="color:#f87171">{{ manga.sync_error }}</p>{% endif %}
 
         <form method="post" action="/manga/{{ manga.id }}/sync">
-            <button type="submit">🔄 Resynchroniser (toutes les sources)</button>
+            <button type="submit" class="btn-sync btn-sync-block">🔄 Resynchroniser (toutes les sources)</button>
         </form>
     </div>
 </div>
@@ -113,7 +119,7 @@
             <td>
                 <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url" class="source-link-form">
                     <input type="url" name="mangaupdates_url" value="{{ manga.mangaupdates_url }}" placeholder="Lien MangaUpdates">
-                    <button type="submit" class="secondary">Enregistrer + resync</button>
+                    <button type="submit" class="btn-sync">Enregistrer + resync</button>
                 </form>
                 {% if manga.mangaupdates_url %}<small class="source-link-view"><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
             </td>
@@ -132,7 +138,7 @@
             <td>
                 <form method="post" action="/manga/{{ manga.id }}/mangadex-url" class="source-link-form">
                     <input type="url" name="mangadex_url" value="{{ manga.mangadex_url or '' }}" placeholder="Lien MangaDex">
-                    <button type="submit" class="secondary">Enregistrer + resync</button>
+                    <button type="submit" class="btn-sync">Enregistrer + resync</button>
                 </form>
                 {% if manga.mangadex_url %}<small class="source-link-view"><a href="{{ manga.mangadex_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
             </td>
@@ -151,7 +157,7 @@
             <td>
                 <form method="post" action="/manga/{{ manga.id }}/anilist-url" class="source-link-form">
                     <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList">
-                    <button type="submit" class="secondary">Enregistrer + resync</button>
+                    <button type="submit" class="btn-sync">Enregistrer + resync</button>
                 </form>
                 {% if manga.anilist_url %}<small class="source-link-view"><a href="{{ manga.anilist_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
             </td>
