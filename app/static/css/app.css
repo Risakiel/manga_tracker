@@ -421,10 +421,22 @@ body {
    default align-items) then makes it exactly as tall as that row's tiles,
    instead of its own image aspect ratio. Row 2 has nothing in column 1, so
    it's simply blank underneath, matching the user's request that the cover
-   reach the bottom of the Type/Statut row and no further. */
+   reach the bottom of the Type/Statut row and no further.
+
+   position:relative + the img absolutely positioned inside (below) is
+   required, not decorative: a plain height:100% image still contributes
+   its OWN aspect-ratio-driven height to row 1's auto track-sizing pass
+   (percentages are treated as auto during that pass to avoid a circular
+   dependency), so a wide cover column -- a tall image at that width --
+   was inflating row 1 itself far past its tiles, leaving a large empty
+   gap beside row 2. Taking the img out of flow with position:absolute
+   removes it from that sizing pass entirely: row 1's height then comes
+   purely from .detail-row1's tiles, and the img just fills whatever
+   box .detail-cover-cell ends up stretched to. */
 .detail-cover-cell {
     grid-column: 1;
     grid-row: 1;
+    position: relative;
 }
 
 .detail-row1 {
@@ -452,6 +464,8 @@ body {
 
 .detail-cover {
     display: block;
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     min-height: 12rem;
@@ -1030,8 +1044,12 @@ body {
     /* Row 1 becomes 4 stacked tiles at this width (see .stat-tile-grid
        above) -- letting the cover stretch to match that height would
        distort it into a tall, narrow sliver. Revert to its own aspect
-       ratio here; the "match row 1's height" request was about desktop. */
+       ratio here; the "match row 1's height" request was about desktop.
+       position:static (not just height:auto) is required: with inset:0
+       still in effect, top:0/bottom:0 alone force the height to fill
+       regardless of the height property. */
     .detail-cover {
+        position: static;
         height: auto;
         min-height: 0;
     }

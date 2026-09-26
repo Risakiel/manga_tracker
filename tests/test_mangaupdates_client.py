@@ -59,6 +59,19 @@ def test_fetch_series_parses_payload():
     assert series.artists == ["chleo"]
     assert series.genres == ["Action", "Fantasy"]
     assert series.cover_url.endswith("i437210.jpg")
+    # Regression: the detail page displays this large -- must prefer the
+    # full-resolution "original" over the small "thumb" variant.
+    assert series.cover_url == "https://cdn.mangaupdates.com/image/i437210.jpg"
+
+
+@respx.mock
+def test_fetch_series_falls_back_to_thumb_when_no_original():
+    payload = dict(SAMPLE_SERIES_PAYLOAD, image={"url": {"thumb": "https://cdn.mangaupdates.com/image/thumb/i1.jpg"}})
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    series = fetch_series(44838842124)
+    assert series.cover_url == "https://cdn.mangaupdates.com/image/thumb/i1.jpg"
 
 
 @respx.mock

@@ -92,6 +92,13 @@ def _parse_series_payload(data: dict) -> MangaUpdatesSeries:
 
     completed = bool(data.get("completed")) or "complete" in status_raw.lower()
 
+    # Prefer the full-resolution cover over the "thumb" variant -- this is
+    # the URL that ends up displayed large on the manga detail page, and
+    # the thumb is only a couple hundred px wide, visibly pixelated once
+    # stretched to fill a wide cover column.
+    image_url = (data.get("image") or {}).get("url") or {}
+    cover_url = image_url.get("original") or image_url.get("thumb") or ""
+
     return MangaUpdatesSeries(
         series_id=data["series_id"],
         title=data.get("title", ""),
@@ -104,7 +111,7 @@ def _parse_series_payload(data: dict) -> MangaUpdatesSeries:
         authors=authors,
         artists=artists,
         associated_titles=[a["title"] for a in data.get("associated", []) if a.get("title")],
-        cover_url=(data.get("image") or {}).get("url", {}).get("thumb", ""),
+        cover_url=cover_url,
         type_=data.get("type", ""),
     )
 
