@@ -391,23 +391,31 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
         return False
 
 
-def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> bool:
+def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> list[str]:
     """Overwrite-on-purpose variant of _push_metadata_to_komga, used only by
     the explicit "Identify" action below: this app is meant to become the
     master copy of a manga's identity, replacing what used to be komf's job,
     so a freshly identified field replaces whatever Komga has -- unlike the
     routine sync above, which only ever fills a gap. Per-field locks set by
     hand in Komga are still respected either way; that's what a lock is for.
+
+    Returns the human-readable list of fields actually sent, for the
+    "Identify" recap -- empty if there was nothing to push (everything
+    locked, or nothing changed).
     """
     patch: dict = {}
+    pushed: list[str] = []
     if not series.summary_locked and manga.description:
         patch["summary"] = manga.description
+        pushed.append("résumé")
     if not series.genres_locked and manga.genres:
         patch["genres"] = manga.genres
+        pushed.append("genres")
     if not series.alternate_titles_locked and manga.alt_titles:
         patch["alternateTitles"] = [
             {"label": komga_client.MANGAUPDATES_LINK_LABEL, "title": t} for t in manga.alt_titles
         ]
+        pushed.append("titres alternatifs")
     if not series.links_locked and manga.mangaupdates_url:
         other_links = [
             link
@@ -417,20 +425,86 @@ def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries
         patch["links"] = other_links + [
             {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
         ]
+        pushed.append("lien MangaUpdates")
     if not series.tags_locked:
         other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
         suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
         new_tags = other_tags + suwayomi_tags
         if sorted(new_tags) != sorted(series.tags):
             patch["tags"] = new_tags
+            pushed.append("tags")
 
     if not patch:
-        return False
+        return []
     try:
         komga_client.update_metadata(series.id, patch, client=client)
-        return True
+        return pushed
     except komga_client.KomgaUnavailable:
+        return []
+
+
+def push_cover_to_komga(manga: Manga, series_id: str, client: httpx.Client) -> bool:
+    """Downloads the manga's current cover (from whichever source it came
+    from -- MangaUpdates/MangaDex/AniList's own CDN, not Komga) and uploads
+    it as the series' new selected thumbnail. Identify-only, same
+    "master copy" reasoning as force_push_metadata_to_komga above."""
+    if not manga.cover_url:
         return False
+    try:
+        with httpx.Client(timeout=20.0, follow_redirects=True) as image_client:
+            resp = image_client.get(manga.cover_url)
+            resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("could not download cover %s for Komga push: %s", manga.cover_url, exc)
+        return False
+    content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+    try:
+        komga_client.upload_series_thumbnail(series_id, resp.content, content_type, client=client)
+        return True
+    except komga_client.KomgaUnavailable as exc:
+        logger.warning("could not upload cover to Komga series %s: %s", series_id, exc)
+        return False
+
+
+_KOMGA_AUTHOR_ROLE = "writer"
+_KOMGA_ARTIST_ROLE = "penciller"
+
+
+def _split_names(value: str) -> list[str]:
+    return [n.strip() for n in value.split(",") if n.strip()]
+
+
+def push_authors_to_komga(manga: Manga, series_id: str, client: httpx.Client) -> int:
+    """Komga has no series-level author field -- the "Writers"/"Pencillers"
+    shown on the series page are aggregated live from each book's own
+    metadata, so replacing them means iterating every book. Only the
+    writer/penciller roles are replaced; any other role a book already has
+    (translator, letterer, ...) is left alone, and a book with its authors
+    locked in Komga is skipped entirely. Returns how many books were
+    actually updated, for the "Identify" recap."""
+    if not manga.author and not manga.artist:
+        return 0
+    try:
+        books = komga_client.fetch_books(series_id, client=client)
+    except komga_client.KomgaUnavailable as exc:
+        logger.warning("could not list Komga books for series %s: %s", series_id, exc)
+        return 0
+
+    updated = 0
+    for book in books:
+        if book.authors_locked:
+            continue
+        new_authors = [a for a in book.authors if a.get("role") not in (_KOMGA_AUTHOR_ROLE, _KOMGA_ARTIST_ROLE)]
+        new_authors += [{"name": name, "role": _KOMGA_AUTHOR_ROLE} for name in _split_names(manga.author)]
+        new_authors += [{"name": name, "role": _KOMGA_ARTIST_ROLE} for name in _split_names(manga.artist)]
+        if new_authors == book.authors:
+            continue
+        try:
+            komga_client.update_book_metadata(book.id, {"authors": new_authors}, client=client)
+            updated += 1
+        except komga_client.KomgaUnavailable as exc:
+            logger.warning("could not update authors for Komga book %s: %s", book.id, exc)
+    return updated
 
 
 IDENTIFY_SOURCE_LABELS = {"mangaupdates": "MangaUpdates", "mangadex": "MangaDex", "anilist": "AniList"}
@@ -483,7 +557,7 @@ class IdentifyResult:
     source_label: str
     title: str
     komga_linked: bool
-    komga_pushed: bool
+    komga_pushed: list[str]
     komga_error: Optional[str] = None
 
 
@@ -538,13 +612,18 @@ def apply_identify(session: Session, manga: Manga, source: str, external_id: str
     session.commit()
 
     komga_linked = bool(manga.komga_series_id)
-    komga_pushed = False
+    komga_pushed: list[str] = []
     komga_error = None
     if komga_linked:
         try:
             with komga_client.open_client() as client:
                 series = komga_client.fetch_series_by_id(manga.komga_series_id, client=client)
-                komga_pushed = force_push_metadata_to_komga(manga, series, client=client)
+                komga_pushed.extend(force_push_metadata_to_komga(manga, series, client=client))
+                if push_cover_to_komga(manga, manga.komga_series_id, client=client):
+                    komga_pushed.append("couverture")
+                authors_updated = push_authors_to_komga(manga, manga.komga_series_id, client=client)
+                if authors_updated:
+                    komga_pushed.append(f"auteur/artiste ({authors_updated} tome(s))")
         except komga_client.KomgaUnavailable as exc:
             komga_error = str(exc)
 

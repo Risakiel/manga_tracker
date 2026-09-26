@@ -409,9 +409,32 @@ body {
 .detail-grid {
     display: grid;
     grid-template-columns: minmax(200px, 280px) 1fr;
-    gap: 2rem;
-    align-items: start;
+    gap: 0.75rem 2rem;
     margin-bottom: 1.5rem;
+}
+
+/* Cover sits in the same row-1 track as .detail-row1 -- stretch (grid's
+   default align-items) then makes it exactly as tall as that row's tiles,
+   instead of its own image aspect ratio. Row 2 has nothing in column 1, so
+   it's simply blank underneath, matching the user's request that the cover
+   reach the bottom of the Type/Statut row and no further. */
+.detail-cover-cell {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.detail-row1 {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.detail-row2 {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.detail-grid .stat-tile-grid {
+    margin-bottom: 0;
 }
 
 .detail-error {
@@ -424,8 +447,10 @@ body {
 }
 
 .detail-cover {
+    display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
+    min-height: 12rem;
     border-radius: var(--pico-border-radius);
     object-fit: cover;
 }
@@ -740,43 +765,95 @@ body {
     color: var(--pico-muted-color);
 }
 
-/* Per-source "link + resync" form in the manga detail page's "Sources
-   externes" table -- Pico buttons default to width:100%, which inside a
-   table cell fights the input for space, so the button is forced back to
-   its own text size and centered under the (full-width) input. */
-.source-link-form {
+/* "Sources externes" popup: one row per source, styled after Komga's own
+   "Edit series > Links" panel (label chip + inline URL field + icon
+   actions in a single rounded bar) instead of a cramped 4-column table. */
+.komga-links-list {
     display: flex;
     flex-direction: column;
+    gap: 1rem;
+}
+
+.komga-link-row-meta {
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.6rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+}
+
+.komga-link-row-name {
+    font-weight: 700;
+}
+
+.komga-link-row-chapter {
+    color: var(--muted-text-color);
+}
+
+.komga-link-row-star-form {
+    margin: 0 0 0 auto;
+}
+
+.komga-link-row-star-form button {
+    width: auto;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+}
+
+.komga-link-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--secondary-background-color);
+    border: 1px solid var(--surface-border-color);
+    border-radius: 0.6rem;
+    padding: 0.3rem 0.4rem 0.3rem 0.75rem;
     margin: 0;
 }
 
-.source-link-form input {
-    width: 100%;
+.komga-link-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted-text-color);
+    white-space: nowrap;
+    padding-right: 0.6rem;
+    border-right: 1px solid var(--surface-border-color);
 }
 
-.source-link-form button {
-    width: auto;
-}
-
-.source-link-view {
-    display: block;
-    text-align: center;
-    margin-top: 0.25rem;
-}
-
-.source-action-cell {
-    text-align: center;
-}
-
-.source-action-cell form {
-    display: inline-block;
+.komga-link-bar input[type="url"] {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--text-color);
+    padding: 0.3rem 0;
     margin: 0;
 }
 
-.source-action-cell button {
-    width: auto;
+/* .komga-link-bar prefix bumps specificity above Pico's own
+   "button[type=submit]{width:100%}" (0,1,1) -- a bare ".komga-link-icon-btn"
+   (0,1,0) loses that fight by one point and the button balloons to fill the
+   bar, starving the URL input of any width via flex distribution. */
+.komga-link-bar .komga-link-icon-btn {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: var(--text-color);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.komga-link-bar .komga-link-icon-btn:hover {
+    background: rgba(var(--primary-rgb), 0.15);
 }
 
 /* Manga detail page stat cards -- same visual language as JellyGlance's
@@ -937,5 +1014,14 @@ body {
 
     .detail-toolbar-actions .btn-sync {
         flex: 1;
+    }
+
+    /* Row 1 becomes 4 stacked tiles at this width (see .stat-tile-grid
+       above) -- letting the cover stretch to match that height would
+       distort it into a tall, narrow sliver. Revert to its own aspect
+       ratio here; the "match row 1's height" request was about desktop. */
+    .detail-cover {
+        height: auto;
+        min-height: 0;
     }
 }

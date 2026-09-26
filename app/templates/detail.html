@@ -36,10 +36,10 @@
 {% endif %}
 
 <div class="detail-grid">
-    <div>
+    <div class="detail-cover-cell">
         {% if manga.cover_url %}<img class="detail-cover" src="{{ manga.cover_url }}" alt="">{% endif %}
     </div>
-    <div>
+    <div class="detail-row1">
         <!-- Row 1: identity -- Type, Dossier serveur, Catégories Suwayomi, Statut. -->
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
@@ -97,7 +97,9 @@
                 </div>
             </div>
         </div>
+    </div>
 
+    <div class="detail-row2">
         <!-- Row 2: chapters/reading + the resync action, bundled into the "Dernière synchro" tile. -->
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
@@ -198,62 +200,55 @@
             jamais utilisé pour ce calcul.
         </small>
     </p>
-    <div style="overflow-x:auto">
-    <table>
-        <thead><tr><th>Source</th><th>Dernier chapitre</th><th style="width:40%">Lien</th><th></th></tr></thead>
-        <tbody>
-        <tr>
-            <td>MangaUpdates {% if chapter_source == "mangaupdates" %}⭐{% endif %}</td>
-            <td>{{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "—" }}</td>
-            <td>
-                <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url" class="source-link-form">
-                    <input type="url" name="mangaupdates_url" value="{{ manga.mangaupdates_url }}" placeholder="Lien MangaUpdates">
-                    <button type="submit" class="btn-sync">{% include "_sync_icon.html" %}<span>Enregistrer + resync</span></button>
-                </form>
-                {% if manga.mangaupdates_url %}<small class="source-link-view"><a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
-            </td>
-            <td class="source-action-cell">
+    <div class="komga-links-list">
+        <div class="komga-link-row">
+            <div class="komga-link-row-meta">
+                <span class="komga-link-row-name">MangaUpdates {% if chapter_source == "mangaupdates" %}⭐{% endif %}</span>
+                <span class="komga-link-row-chapter">Ch. {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "—" }}</span>
                 {% if chapter_source != "mangaupdates" %}
-                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source">
+                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source" class="komga-link-row-star-form">
                     <input type="hidden" name="source" value="mangaupdates">
                     <button type="submit" class="outline secondary">Utiliser pour le retard</button>
                 </form>
                 {% endif %}
-            </td>
-        </tr>
-        <tr>
-            <td>MangaDex {% if chapter_source == "mangadex" %}⭐{% endif %}</td>
-            <td>{{ manga.mangadex_latest_chapter | int if manga.mangadex_latest_chapter is not none else "—" }}</td>
-            <td>
-                <form method="post" action="/manga/{{ manga.id }}/mangadex-url" class="source-link-form">
-                    <input type="url" name="mangadex_url" value="{{ manga.mangadex_url or '' }}" placeholder="Lien MangaDex">
-                    <button type="submit" class="btn-sync">{% include "_sync_icon.html" %}<span>Enregistrer + resync</span></button>
-                </form>
-                {% if manga.mangadex_url %}<small class="source-link-view"><a href="{{ manga.mangadex_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
-            </td>
-            <td class="source-action-cell">
+            </div>
+            <form method="post" action="/manga/{{ manga.id }}/mangaupdates-url" class="komga-link-bar">
+                <span class="komga-link-label">MangaUpdates</span>
+                <input type="url" name="mangaupdates_url" value="{{ manga.mangaupdates_url }}" placeholder="Lien MangaUpdates">
+                {% if manga.mangaupdates_url %}<a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener" class="komga-link-icon-btn" title="Voir">↗</a>{% endif %}
+                <button type="submit" class="komga-link-icon-btn" title="Enregistrer + resynchroniser">{% include "_sync_icon.html" %}</button>
+            </form>
+        </div>
+        <div class="komga-link-row">
+            <div class="komga-link-row-meta">
+                <span class="komga-link-row-name">MangaDex {% if chapter_source == "mangadex" %}⭐{% endif %}</span>
+                <span class="komga-link-row-chapter">Ch. {{ manga.mangadex_latest_chapter | int if manga.mangadex_latest_chapter is not none else "—" }}</span>
                 {% if chapter_source != "mangadex" %}
-                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source">
+                <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source" class="komga-link-row-star-form">
                     <input type="hidden" name="source" value="mangadex">
                     <button type="submit" class="outline secondary">Utiliser pour le retard</button>
                 </form>
                 {% endif %}
-            </td>
-        </tr>
-        <tr>
-            <td>AniList</td>
-            <td>{{ manga.anilist_latest_chapter | int if manga.anilist_latest_chapter is not none else "—" }}</td>
-            <td>
-                <form method="post" action="/manga/{{ manga.id }}/anilist-url" class="source-link-form">
-                    <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList">
-                    <button type="submit" class="btn-sync">{% include "_sync_icon.html" %}<span>Enregistrer + resync</span></button>
-                </form>
-                {% if manga.anilist_url %}<small class="source-link-view"><a href="{{ manga.anilist_url }}" target="_blank" rel="noopener">Voir ↗</a></small>{% endif %}
-            </td>
-            <td></td>
-        </tr>
-        </tbody>
-    </table>
+            </div>
+            <form method="post" action="/manga/{{ manga.id }}/mangadex-url" class="komga-link-bar">
+                <span class="komga-link-label">MangaDex</span>
+                <input type="url" name="mangadex_url" value="{{ manga.mangadex_url or '' }}" placeholder="Lien MangaDex">
+                {% if manga.mangadex_url %}<a href="{{ manga.mangadex_url }}" target="_blank" rel="noopener" class="komga-link-icon-btn" title="Voir">↗</a>{% endif %}
+                <button type="submit" class="komga-link-icon-btn" title="Enregistrer + resynchroniser">{% include "_sync_icon.html" %}</button>
+            </form>
+        </div>
+        <div class="komga-link-row">
+            <div class="komga-link-row-meta">
+                <span class="komga-link-row-name">AniList</span>
+                <span class="komga-link-row-chapter">Ch. {{ manga.anilist_latest_chapter | int if manga.anilist_latest_chapter is not none else "—" }}</span>
+            </div>
+            <form method="post" action="/manga/{{ manga.id }}/anilist-url" class="komga-link-bar">
+                <span class="komga-link-label">AniList</span>
+                <input type="url" name="anilist_url" value="{{ manga.anilist_url or '' }}" placeholder="Lien AniList">
+                {% if manga.anilist_url %}<a href="{{ manga.anilist_url }}" target="_blank" rel="noopener" class="komga-link-icon-btn" title="Voir">↗</a>{% endif %}
+                <button type="submit" class="komga-link-icon-btn" title="Enregistrer + resynchroniser">{% include "_sync_icon.html" %}</button>
+            </form>
+        </div>
     </div>
 </article>
 </dialog>

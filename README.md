@@ -88,9 +88,19 @@ intégrées (MangaUpdates, MangaDex, AniList) en une seule requête, exactement 
 jouait komf directement sur Komga — sauf que MangaTracker devient ici la source de vérité :
 un résultat choisi met d'abord à jour la fiche locale (mêmes champs que le match manuel par
 source), puis, si le manga est déjà lié à une série Komga, **écrase** ce que Komga a pour les
-champs concernés (résumé, genres, titres alternatifs, lien MangaUpdates, tags Suwayomi) —
-contrairement au push non-destructif ci-dessus. Un champ verrouillé côté Komga reste
-protégé dans les deux cas ; le verrou existe pour ça.
+champs concernés (résumé, genres, titres alternatifs, lien MangaUpdates, tags Suwayomi,
+couverture, auteur/dessinateur) — contrairement au push non-destructif ci-dessus. Un champ
+verrouillé côté Komga (y compris au niveau d'un tome pour les auteurs) reste protégé dans
+les deux cas ; le verrou existe pour ça.
+
+Komga ne stocke pas d'auteur/dessinateur au niveau de la série (seulement par tome), donc ce
+push-là parcourt tous les tomes de la série pour y remplacer les rôles "writer"/"penciller" —
+les autres rôles déjà présents sur un tome (traducteur, lettreur, ...) sont laissés intacts.
+La couverture est simplement re-téléchargée depuis l'URL de la source choisie et envoyée à
+Komga comme nouvelle miniature sélectionnée. Ces deux endpoints Komga (upload de miniature,
+metadata par tome) sont implémentés d'après la spec OpenAPI publique de Komga, mais n'ont pas
+pu être vérifiés en direct sur une vraie instance comme le reste de ce module — à surveiller
+au premier vrai test.
 
 ### Partage NAS ("Dossier serveur")
 

@@ -7,6 +7,8 @@ from app.models import Category, ChapterSource, Manga, Status
 from app.services import anilist_client, komga_client, mangadex_client, mangaupdates_client, suwayomi_client
 from app.services.sync_service import (
     apply_identify,
+    push_authors_to_komga,
+    push_cover_to_komga,
     search_identify_candidates,
     sync_all_manga_sources,
     sync_komga_library,
@@ -831,7 +833,7 @@ def test_apply_identify_force_overwrites_existing_komga_metadata(monkeypatch):
     result = apply_identify(session, manga, "mangaupdates", "5")
 
     assert result.komga_linked is True
-    assert result.komga_pushed is True
+    assert result.komga_pushed == ["résumé", "genres", "lien MangaUpdates"]
     assert updates == [
         (
             "series-9",
@@ -891,7 +893,7 @@ def test_apply_identify_respects_komga_locks_even_when_overwriting(monkeypatch):
 
     result = apply_identify(session, manga, "mangaupdates", "1")
 
-    assert result.komga_pushed is False
+    assert result.komga_pushed == []
     assert updates == []
 
 
@@ -935,3 +937,125 @@ def test_apply_identify_anilist(monkeypatch):
     assert result.source_label == "AniList"
     assert manga.anilist_id == 77
     assert manga.anilist_url == "https://anilist.co/manga/77"
+
+
+@respx.mock
+def test_push_cover_to_komga_uploads_downloaded_image(monkeypatch):
+    manga = Manga(
+        category=Category.manga,
+        title_en="Cover Manga",
+        server_folder="Cover Manga",
+        cover_url="https://img.example/cover.jpg",
+    )
+    respx.get("https://img.example/cover.jpg").mock(
+        return_value=httpx.Response(200, content=b"fake-image-bytes", headers={"content-type": "image/jpeg"})
+    )
+    uploads = []
+    monkeypatch.setattr(
+        komga_client,
+        "upload_series_thumbnail",
+        lambda series_id, content, content_type, client=None: uploads.append((series_id, content, content_type)),
+    )
+
+    pushed = push_cover_to_komga(manga, "series-1", client=None)
+
+    assert pushed is True
+    assert uploads == [("series-1", b"fake-image-bytes", "image/jpeg")]
+
+
+def test_push_cover_to_komga_returns_false_without_cover_url():
+    manga = Manga(category=Category.manga, title_en="No Cover", server_folder="No Cover")
+    assert push_cover_to_komga(manga, "series-1", client=None) is False
+
+
+def test_push_authors_to_komga_replaces_writer_and_penciller_roles_only(monkeypatch):
+    manga = Manga(
+        category=Category.manga,
+        title_en="Author Manga",
+        server_folder="Author Manga",
+        author="New Author",
+        artist="New Artist",
+    )
+    book_unlocked = komga_client.KomgaBook(
+        id="book-1",
+        authors=[{"name": "Old Writer", "role": "writer"}, {"name": "Some Translator", "role": "translator"}],
+    )
+    book_locked = komga_client.KomgaBook(id="book-2", authors=[], authors_locked=True)
+    monkeypatch.setattr(komga_client, "fetch_books", lambda series_id, client=None: [book_unlocked, book_locked])
+    updates = []
+    monkeypatch.setattr(
+        komga_client, "update_book_metadata", lambda book_id, patch, client=None: updates.append((book_id, patch))
+    )
+
+    updated_count = push_authors_to_komga(manga, "series-1", client=None)
+
+    assert updated_count == 1
+    assert updates == [
+        (
+            "book-1",
+            {
+                "authors": [
+                    {"name": "Some Translator", "role": "translator"},
+                    {"name": "New Author", "role": "writer"},
+                    {"name": "New Artist", "role": "penciller"},
+                ]
+            },
+        )
+    ]
+
+
+@respx.mock
+def test_apply_identify_pushes_cover_and_authors_to_komga(monkeypatch):
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Full Push Manga",
+        server_folder="Full Push Manga",
+        komga_series_id="series-3",
+    )
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "fetch_series",
+        lambda series_id, client=None: mangaupdates_client.MangaUpdatesSeries(
+            series_id=2,
+            title="Full Identity",
+            url="https://www.mangaupdates.com/series/2/full-identity",
+            cover_url="https://img.example/full-cover.jpg",
+            authors=["Some Author"],
+            artists=["Some Artist"],
+        ),
+    )
+    series = komga_client.KomgaSeries(id="series-3", library_id="lib-manga", name="Full Push Manga")
+    monkeypatch.setattr(komga_client, "fetch_series_by_id", lambda series_id, client=None: series)
+    monkeypatch.setattr(komga_client, "update_metadata", lambda series_id, patch, client=None: None)
+
+    respx.get("https://img.example/full-cover.jpg").mock(
+        return_value=httpx.Response(200, content=b"cover-bytes", headers={"content-type": "image/jpeg"})
+    )
+    uploads = []
+    monkeypatch.setattr(
+        komga_client,
+        "upload_series_thumbnail",
+        lambda series_id, content, content_type, client=None: uploads.append(series_id),
+    )
+    book = komga_client.KomgaBook(id="book-9", authors=[])
+    monkeypatch.setattr(komga_client, "fetch_books", lambda series_id, client=None: [book])
+    book_updates = []
+    monkeypatch.setattr(
+        komga_client, "update_book_metadata", lambda book_id, patch, client=None: book_updates.append((book_id, patch))
+    )
+
+    result = apply_identify(session, manga, "mangaupdates", "2")
+
+    assert "couverture" in result.komga_pushed
+    assert any("auteur/artiste" in p for p in result.komga_pushed)
+    assert uploads == ["series-3"]
+    assert book_updates == [
+        (
+            "book-9",
+            {"authors": [{"name": "Some Author", "role": "writer"}, {"name": "Some Artist", "role": "penciller"}]},
+        )
+    ]

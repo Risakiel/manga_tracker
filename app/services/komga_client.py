@@ -69,6 +69,13 @@ class KomgaSeries:
     alternate_titles_locked: bool = False
 
 
+@dataclass
+class KomgaBook:
+    id: str
+    authors: list[dict] = field(default_factory=list)
+    authors_locked: bool = False
+
+
 def _base_url() -> str:
     return settings.komga_url.rstrip("/")
 
@@ -185,6 +192,77 @@ def fetch_series(library_id: str, client: Optional[httpx.Client] = None) -> list
         return series
     except httpx.HTTPError as exc:
         raise KomgaUnavailable(f"could not reach Komga at {settings.komga_url}: {exc}") from exc
+    finally:
+        if owns_client:
+            client.close()
+
+
+def _parse_book(node: dict) -> KomgaBook:
+    metadata = node.get("metadata") or {}
+    return KomgaBook(
+        id=node["id"],
+        authors=metadata.get("authors") or [],
+        authors_locked=bool(metadata.get("authorsLock")),
+    )
+
+
+def fetch_books(series_id: str, client: Optional[httpx.Client] = None) -> list[KomgaBook]:
+    """All books (volumes/chapters) of a series -- needed because Komga has
+    no series-level author field: the series page's "Writers"/"Pencillers"
+    shown in the UI are aggregated live from each book's own metadata, the
+    same place a ComicInfo.xml scan would have written them."""
+    if not settings.komga_url:
+        raise KomgaUnavailable("KOMGA_URL is not configured")
+    owns_client = client is None
+    client = client or _client()
+    books: list[KomgaBook] = []
+    page = 0
+    try:
+        while True:
+            data = _get(client, f"/api/v1/series/{series_id}/books", params={"size": 500, "page": page})
+            books.extend(_parse_book(n) for n in data["content"])
+            if data.get("last", True):
+                break
+            page += 1
+        return books
+    except httpx.HTTPError as exc:
+        raise KomgaUnavailable(f"could not reach Komga at {settings.komga_url}: {exc}") from exc
+    finally:
+        if owns_client:
+            client.close()
+
+
+def update_book_metadata(book_id: str, patch: dict, client: Optional[httpx.Client] = None) -> None:
+    owns_client = client is None
+    client = client or _client()
+    try:
+        resp = client.patch(f"{_base_url()}/api/v1/books/{book_id}/metadata", json=patch)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise KomgaUnavailable(f"failed to update Komga book {book_id}: {exc}") from exc
+    finally:
+        if owns_client:
+            client.close()
+
+
+def upload_series_thumbnail(
+    series_id: str, content: bytes, content_type: str, client: Optional[httpx.Client] = None
+) -> None:
+    """Uploads and selects a new cover for a series. NOTE: implemented from
+    Komga's public OpenAPI spec, not verified against a live server the way
+    the rest of this module's write paths were (see module docstring) --
+    watch the logs the first time this runs for real."""
+    owns_client = client is None
+    client = client or _client()
+    try:
+        resp = client.post(
+            f"{_base_url()}/api/v1/series/{series_id}/thumbnails",
+            params={"selected": "true"},
+            files={"file": ("cover", content, content_type)},
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise KomgaUnavailable(f"failed to upload Komga cover for series {series_id}: {exc}") from exc
     finally:
         if owns_client:
             client.close()

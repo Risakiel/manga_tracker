@@ -3,8 +3,8 @@
     {% if result.komga_linked %}
     <li>
         Komga —
-        {% if result.komga_pushed %}<span class="identify-ok">✓ métadonnées écrasées</span>
-        {% elif result.komga_error %}<span class="identify-fail">✗ {{ result.komga_error }}</span>
+        {% if result.komga_error %}<span class="identify-fail">✗ {{ result.komga_error }}</span>
+        {% elif result.komga_pushed %}<span class="identify-ok">✓ {{ result.komga_pushed | join(", ") }}</span>
         {% else %}<small>rien à mettre à jour</small>{% endif %}
     </li>
     {% else %}
