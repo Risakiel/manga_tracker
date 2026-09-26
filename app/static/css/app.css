@@ -408,7 +408,11 @@ body {
 
 .detail-grid {
     display: grid;
-    grid-template-columns: minmax(200px, 280px) 1fr;
+    /* Cover column reads as 5 of 12 grid units (~42%) rather than a small
+       fixed pixel cap, so it scales with the page on a wide monitor
+       instead of staying tiny while row 1's tiles stretch to fill the
+       leftover space. */
+    grid-template-columns: minmax(220px, 5fr) 7fr;
     gap: 0.75rem 2rem;
     margin-bottom: 1.5rem;
 }
@@ -982,6 +986,13 @@ body {
 @media (max-width: 700px) {
     .bio-grid {
         grid-template-columns: 1fr;
+    }
+
+    /* The 5fr/7fr split above is meant for a wide desktop screen -- on a
+       narrow phone it would hit the 220px floor and squeeze row 1's tiles
+       into a sliver, so fall back to a smaller fixed cover column instead. */
+    .detail-grid {
+        grid-template-columns: minmax(140px, 170px) 1fr;
     }
 
     /* The large row 1/2 title/value sizes overflow a narrow single-column
