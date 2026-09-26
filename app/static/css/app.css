@@ -406,27 +406,51 @@ body {
     font-weight: 700;
 }
 
-/* Cover column is a fixed 5 of 12 grid units (~42%); everything else --
+/* Cover column is a fixed 4 of 12 grid units (33%); everything else --
    both stat-tile rows, the bio row, and the description -- lives in
-   .detail-right, the other 7. align-items:start (not grid's default
+   .detail-right, the other 8. align-items:start (not grid's default
    stretch) lets the cover keep its own natural aspect ratio at that
-   width instead of being forced to match .detail-right's height. */
+   width instead of being forced to match .detail-right's height.
+
+   minmax(0, Nfr), not a plain Nfr, on both tracks: a plain fr track's
+   automatic minimum size still factors in its content's min-content
+   width, so one long unbroken token anywhere inside (a raw URL in the
+   description, see .detail-right article p below) was pushing the
+   whole grid -- and the page -- wider than the viewport instead of
+   wrapping. minmax(0, ...) caps that automatic minimum at 0, so the
+   track (and the min-width:0 items placed in it, below) can actually
+   shrink to fit instead of forcing horizontal overflow. */
 .detail-grid {
     display: grid;
-    grid-template-columns: minmax(220px, 5fr) 7fr;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
     gap: 2rem;
     align-items: start;
     margin-bottom: 1.5rem;
+}
+
+.detail-cover-cell {
+    min-width: 0;
 }
 
 .detail-right {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    min-width: 0;
 }
 
 .detail-right .stat-tile-grid {
     margin-bottom: 0;
+}
+
+/* Manga descriptions are often copy-pasted with raw URLs in them (see
+   the "Sources externes" attribution links some publishers add) -- a
+   URL has no natural break point, so without this it's exactly the
+   kind of single long token that defeats the minmax(0, ...) fix above
+   and forces the page wider instead of wrapping. */
+.detail-right article p {
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .detail-error {
