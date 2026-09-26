@@ -6,6 +6,12 @@
 
 <a href="/" class="detail-back-link" data-discover="true" onclick="if (window.history.length > 1) { event.preventDefault(); history.back(); }">&larr; Retour</a>
 
+{% if manga.sync_error %}
+<div class="detail-error">
+    <div class="stat-tile-label" style="color:#f87171">{{ manga.sync_error }}</div>
+</div>
+{% endif %}
+
 <div class="detail-grid">
     <div>
         {% if manga.cover_url %}<img class="detail-cover" src="{{ manga.cover_url }}" alt="">{% endif %}
@@ -107,7 +113,6 @@
                 </div>
             </div>
         </div>
-        {% if manga.sync_error %}<p style="color:#f87171">{{ manga.sync_error }}</p>{% endif %}
     </div>
 </div>
 

@@ -310,6 +310,16 @@ body {
     grid-template-columns: minmax(200px, 280px) 1fr;
     gap: 2rem;
     align-items: start;
+    margin-bottom: 1.5rem;
+}
+
+.detail-error {
+    background: var(--secondary-background-color);
+    border: 1px solid var(--surface-border-color);
+    border-radius: 0.9rem;
+    padding: 0.9rem 1rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
 }
 
 .detail-cover {
@@ -685,9 +695,7 @@ body {
 }
 
 .stat-tile-label {
-    /* Same typographic family as the h3 above "Description" (bold,
-       var(--pico-color)) -- just sized down to fit a compact tile label. */
-    font-size: 0.85rem;
+    font-size: 2.4rem;
     font-weight: 700;
     color: var(--text-color);
     margin-bottom: 0.3rem;
@@ -720,7 +728,6 @@ body {
 }
 
 .stat-tile-center .stat-tile-label {
-    font-size: 2.4rem;
     margin-bottom: 0;
 }
 
@@ -805,7 +812,7 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .stat-tile-center .stat-tile-label {
+    .stat-tile-label {
         font-size: 1.3rem;
     }
 
