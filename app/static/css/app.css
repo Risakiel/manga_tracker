@@ -406,50 +406,26 @@ body {
     font-weight: 700;
 }
 
+/* Cover column is a fixed 5 of 12 grid units (~42%); everything else --
+   both stat-tile rows, the bio row, and the description -- lives in
+   .detail-right, the other 7. align-items:start (not grid's default
+   stretch) lets the cover keep its own natural aspect ratio at that
+   width instead of being forced to match .detail-right's height. */
 .detail-grid {
     display: grid;
-    /* Cover column reads as 5 of 12 grid units (~42%) rather than a small
-       fixed pixel cap, so it scales with the page on a wide monitor
-       instead of staying tiny while row 1's tiles stretch to fill the
-       leftover space. */
     grid-template-columns: minmax(220px, 5fr) 7fr;
-    gap: 0.75rem 2rem;
+    gap: 2rem;
+    align-items: start;
     margin-bottom: 1.5rem;
 }
 
-/* Cover sits in the same row-1 track as .detail-row1 -- stretch (grid's
-   default align-items) then makes it exactly as tall as that row's tiles,
-   instead of its own image aspect ratio. Row 2 has nothing in column 1, so
-   it's simply blank underneath, matching the user's request that the cover
-   reach the bottom of the Type/Statut row and no further.
-
-   position:relative + the img absolutely positioned inside (below) is
-   required, not decorative: a plain height:100% image still contributes
-   its OWN aspect-ratio-driven height to row 1's auto track-sizing pass
-   (percentages are treated as auto during that pass to avoid a circular
-   dependency), so a wide cover column -- a tall image at that width --
-   was inflating row 1 itself far past its tiles, leaving a large empty
-   gap beside row 2. Taking the img out of flow with position:absolute
-   removes it from that sizing pass entirely: row 1's height then comes
-   purely from .detail-row1's tiles, and the img just fills whatever
-   box .detail-cover-cell ends up stretched to. */
-.detail-cover-cell {
-    grid-column: 1;
-    grid-row: 1;
-    position: relative;
+.detail-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
-.detail-row1 {
-    grid-column: 2;
-    grid-row: 1;
-}
-
-.detail-row2 {
-    grid-column: 2;
-    grid-row: 2;
-}
-
-.detail-grid .stat-tile-grid {
+.detail-right .stat-tile-grid {
     margin-bottom: 0;
 }
 
@@ -464,13 +440,9 @@ body {
 
 .detail-cover {
     display: block;
-    position: absolute;
-    inset: 0;
     width: 100%;
-    height: 100%;
-    min-height: 12rem;
+    height: auto;
     border-radius: var(--pico-border-radius);
-    object-fit: cover;
 }
 
 .stats-row {
@@ -982,7 +954,7 @@ body {
     display: grid;
     grid-template-columns: 1.3fr 1fr;
     gap: 0.75rem;
-    margin: 0 0 0.75rem;
+    margin: 0;
 }
 
 .bio-left {
@@ -1002,11 +974,12 @@ body {
         grid-template-columns: 1fr;
     }
 
-    /* The 5fr/7fr split above is meant for a wide desktop screen -- on a
-       narrow phone it would hit the 220px floor and squeeze row 1's tiles
-       into a sliver, so fall back to a smaller fixed cover column instead. */
+    /* The 5fr/7fr split now holds everything -- both stat-tile rows, the
+       bio row, and the description -- in the 7fr column; squeezed that
+       far down on a phone it clips text outright. Stack instead: cover
+       full width on top, everything else below it. */
     .detail-grid {
-        grid-template-columns: minmax(140px, 170px) 1fr;
+        grid-template-columns: 1fr;
     }
 
     /* The large row 1/2 title/value sizes overflow a narrow single-column
@@ -1039,18 +1012,5 @@ body {
 
     .detail-toolbar-actions .btn-sync {
         flex: 1;
-    }
-
-    /* Row 1 becomes 4 stacked tiles at this width (see .stat-tile-grid
-       above) -- letting the cover stretch to match that height would
-       distort it into a tall, narrow sliver. Revert to its own aspect
-       ratio here; the "match row 1's height" request was about desktop.
-       position:static (not just height:auto) is required: with inset:0
-       still in effect, top:0/bottom:0 alone force the height to fill
-       regardless of the height property. */
-    .detail-cover {
-        position: static;
-        height: auto;
-        min-height: 0;
     }
 }

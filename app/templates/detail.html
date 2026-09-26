@@ -39,7 +39,7 @@
     <div class="detail-cover-cell">
         {% if manga.cover_url %}<img class="detail-cover" src="{{ manga.cover_url }}" alt="">{% endif %}
     </div>
-    <div class="detail-row1">
+    <div class="detail-right">
         <!-- Row 1: identity -- Type, Dossier serveur, Catégories Suwayomi, Statut. -->
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
@@ -97,9 +97,7 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="detail-row2">
         <!-- Row 2: chapters/reading + the resync action, bundled into the "Dernière synchro" tile. -->
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
@@ -138,52 +136,52 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Bio row, full width: Auteur+Artiste stacked over Titres alternatifs on
-     the left, Genres spanning that column's full height on the right. -->
-<div class="bio-grid">
-    <div class="bio-left">
-        <div class="bio-left-top">
-            <div class="stat-tile">
-                <div class="stat-tile-label">Auteur</div>
-                <div class="stat-tile-value-text stat-tile-list">
-                    {% for name in (manga.author.split(", ") if manga.author else []) %}<div>{{ name }}</div>{% endfor %}
-                    {% if not manga.author %}<div>?</div>{% endif %}
+        <!-- Bio row: Auteur+Artiste stacked over Titres alternatifs on the
+             left, Genres spanning that column's full height on the right. -->
+        <div class="bio-grid">
+            <div class="bio-left">
+                <div class="bio-left-top">
+                    <div class="stat-tile">
+                        <div class="stat-tile-label">Auteur</div>
+                        <div class="stat-tile-value-text stat-tile-list">
+                            {% for name in (manga.author.split(", ") if manga.author else []) %}<div>{{ name }}</div>{% endfor %}
+                            {% if not manga.author %}<div>?</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="stat-tile">
+                        <div class="stat-tile-label">Artiste</div>
+                        <div class="stat-tile-value-text stat-tile-list">
+                            {% for name in (manga.artist.split(", ") if manga.artist else []) %}<div>{{ name }}</div>{% endfor %}
+                            {% if not manga.artist %}<div>?</div>{% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-tile-label">Titres alternatifs</div>
+                    <div class="stat-tile-value-text stat-tile-list">
+                        {% for title in manga.alt_titles %}<div>{{ title }}</div>{% endfor %}
+                        {% if not manga.alt_titles %}<div>?</div>{% endif %}
+                    </div>
                 </div>
             </div>
-            <div class="stat-tile">
-                <div class="stat-tile-label">Artiste</div>
+            <div class="stat-tile bio-genres">
+                <div class="stat-tile-label">Genres</div>
                 <div class="stat-tile-value-text stat-tile-list">
-                    {% for name in (manga.artist.split(", ") if manga.artist else []) %}<div>{{ name }}</div>{% endfor %}
-                    {% if not manga.artist %}<div>?</div>{% endif %}
+                    {% for genre in manga.genres %}<div>{{ genre }}</div>{% endfor %}
+                    {% if not manga.genres %}<div>?</div>{% endif %}
                 </div>
             </div>
         </div>
-        <div class="stat-tile">
-            <div class="stat-tile-label">Titres alternatifs</div>
-            <div class="stat-tile-value-text stat-tile-list">
-                {% for title in manga.alt_titles %}<div>{{ title }}</div>{% endfor %}
-                {% if not manga.alt_titles %}<div>?</div>{% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="stat-tile bio-genres">
-        <div class="stat-tile-label">Genres</div>
-        <div class="stat-tile-value-text stat-tile-list">
-            {% for genre in manga.genres %}<div>{{ genre }}</div>{% endfor %}
-            {% if not manga.genres %}<div>?</div>{% endif %}
-        </div>
+
+        {% if manga.description %}
+        <article>
+            <div class="stat-tile-label">Description</div>
+            <p>{{ manga.description }}</p>
+        </article>
+        {% endif %}
     </div>
 </div>
-
-{% if manga.description %}
-<article>
-    <h3>Description</h3>
-    <p>{{ manga.description }}</p>
-</article>
-{% endif %}
 
 {% set chapter_source = manga.preferred_chapter_source.value if manga.preferred_chapter_source else "mangaupdates" %}
 <dialog id="sources-modal">
