@@ -3,9 +3,11 @@ import respx
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.config import settings
-from app.models import Category, ChapterSource, Manga
+from app.models import Category, ChapterSource, Manga, Status
 from app.services import anilist_client, komga_client, mangadex_client, mangaupdates_client, suwayomi_client
 from app.services.sync_service import (
+    apply_identify,
+    search_identify_candidates,
     sync_all_manga_sources,
     sync_komga_library,
     sync_manga_all_sources,
@@ -719,3 +721,217 @@ def test_sync_all_manga_sources_runs_the_full_cascade_for_every_manga(monkeypatc
     assert linked.mangaupdates_id == 1
     assert mangadex_calls == [1]  # only the manga MangaUpdates failed for
     assert unlinked.mangadex_latest_chapter == 7
+
+
+def test_search_identify_candidates_aggregates_all_sources_and_tolerates_one_failing(monkeypatch):
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "search_series",
+        lambda title, per_page=5, client=None: [
+            mangaupdates_client.MangaUpdatesSearchCandidate(
+                series_id=1,
+                title="MU Hit",
+                url="https://www.mangaupdates.com/series/kljw00c/mu-hit",
+                cover_url="https://img/mu.jpg",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        mangadex_client,
+        "search_manga",
+        lambda title, limit=5, client=None: (_ for _ in ()).throw(httpx.HTTPError("mangadex down")),
+    )
+    monkeypatch.setattr(
+        anilist_client,
+        "search_candidates",
+        lambda title, per_page=5, client=None: [
+            anilist_client.AniListSearchCandidate(id=42, title="AniList Hit", cover_url="https://img/al.jpg")
+        ],
+    )
+
+    candidates = search_identify_candidates("Some Title")
+
+    assert [c.source for c in candidates] == ["mangaupdates", "anilist"]
+    assert candidates[0].external_id == "1"
+    assert candidates[0].title == "MU Hit"
+    assert candidates[1].external_id == "42"
+    assert candidates[1].source_label == "AniList"
+
+
+def test_apply_identify_mangaupdates_sets_fields_without_komga_link(monkeypatch):
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="Some Manga", server_folder="Some Manga")
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "fetch_series",
+        lambda series_id, client=None: mangaupdates_client.MangaUpdatesSeries(
+            series_id=999,
+            title="Identified Title",
+            url="https://www.mangaupdates.com/series/rr0/identified-title",
+            status_raw="Complete",
+            completed=True,
+            latest_chapter=12,
+            authors=["Some Author"],
+            genres=["Action"],
+        ),
+    )
+
+    result = apply_identify(session, manga, "mangaupdates", "999")
+
+    assert result.source_label == "MangaUpdates"
+    assert result.title == "Identified Title"
+    assert result.komga_linked is False
+    assert manga.mangaupdates_id == 999
+    assert manga.mu_latest_chapter == 12
+    assert manga.author == "Some Author"
+    assert manga.status == Status.complete
+
+
+def test_apply_identify_force_overwrites_existing_komga_metadata(monkeypatch):
+    """Unlike the routine _push_metadata_to_komga (which only fills gaps),
+    confirming an Identify pick is expected to replace fields Komga already
+    has -- this app is meant to be the master copy going forward."""
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Linked Manga",
+        server_folder="Linked Manga",
+        komga_series_id="series-9",
+    )
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "fetch_series",
+        lambda series_id, client=None: mangaupdates_client.MangaUpdatesSeries(
+            series_id=5,
+            title="New Identity",
+            url="https://www.mangaupdates.com/series/kljw00c/new-identity",
+            description="New description",
+            genres=["Comedy"],
+        ),
+    )
+    series = komga_client.KomgaSeries(
+        id="series-9",
+        library_id="lib-manga",
+        name="Linked Manga",
+        summary="Stale old summary that should get replaced",
+        genres=["Old Genre"],
+    )
+    monkeypatch.setattr(komga_client, "fetch_series_by_id", lambda series_id, client=None: series)
+    updates = []
+    monkeypatch.setattr(
+        komga_client, "update_metadata", lambda series_id, patch, client=None: updates.append((series_id, patch))
+    )
+
+    result = apply_identify(session, manga, "mangaupdates", "5")
+
+    assert result.komga_linked is True
+    assert result.komga_pushed is True
+    assert updates == [
+        (
+            "series-9",
+            {
+                "summary": "New description",
+                "genres": ["Comedy"],
+                "links": [
+                    {
+                        "label": "MangaUpdates",
+                        "url": "https://www.mangaupdates.com/series/kljw00c/new-identity",
+                    }
+                ],
+            },
+        )
+    ]
+
+
+def test_apply_identify_respects_komga_locks_even_when_overwriting(monkeypatch):
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Locked Manga",
+        server_folder="Locked Manga",
+        komga_series_id="series-7",
+    )
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangaupdates_client,
+        "fetch_series",
+        lambda series_id, client=None: mangaupdates_client.MangaUpdatesSeries(
+            series_id=1,
+            title="Whatever",
+            url="https://www.mangaupdates.com/series/1/whatever",
+            description="Should never land",
+            genres=["Should never land either"],
+        ),
+    )
+    series = komga_client.KomgaSeries(
+        id="series-7",
+        library_id="lib-manga",
+        name="Locked Manga",
+        summary="User-locked summary",
+        genres=["User-locked genre"],
+        summary_locked=True,
+        genres_locked=True,
+        tags_locked=True,
+        links_locked=True,
+        alternate_titles_locked=True,
+    )
+    monkeypatch.setattr(komga_client, "fetch_series_by_id", lambda series_id, client=None: series)
+    updates = []
+    monkeypatch.setattr(
+        komga_client, "update_metadata", lambda series_id, patch, client=None: updates.append((series_id, patch))
+    )
+
+    result = apply_identify(session, manga, "mangaupdates", "1")
+
+    assert result.komga_pushed is False
+    assert updates == []
+
+
+def test_apply_identify_mangadex(monkeypatch):
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="Dex Manga", server_folder="Dex Manga")
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        mangadex_client,
+        "fetch_manga",
+        lambda manga_id, client=None: mangadex_client.MangaDexManga(
+            id="uuid-1", title="Dex Identity", url="https://mangadex.org/title/uuid-1/x", latest_chapter=8
+        ),
+    )
+
+    result = apply_identify(session, manga, "mangadex", "uuid-1")
+
+    assert result.source_label == "MangaDex"
+    assert manga.mangadex_id == "uuid-1"
+    assert manga.mangadex_latest_chapter == 8
+
+
+def test_apply_identify_anilist(monkeypatch):
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="AL Manga", server_folder="AL Manga")
+    session.add(manga)
+    session.commit()
+
+    monkeypatch.setattr(
+        anilist_client,
+        "fetch_media_by_id",
+        lambda anilist_id, client=None: anilist_client.AniListMedia(
+            id=77, title_english="AL Identity", chapters=None
+        ),
+    )
+
+    result = apply_identify(session, manga, "anilist", "77")
+
+    assert result.source_label == "AniList"
+    assert manga.anilist_id == 77
+    assert manga.anilist_url == "https://anilist.co/manga/77"

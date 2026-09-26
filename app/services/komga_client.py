@@ -190,6 +190,20 @@ def fetch_series(library_id: str, client: Optional[httpx.Client] = None) -> list
             client.close()
 
 
+def fetch_series_by_id(series_id: str, client: Optional[httpx.Client] = None) -> KomgaSeries:
+    if not settings.komga_url:
+        raise KomgaUnavailable("KOMGA_URL is not configured")
+    owns_client = client is None
+    client = client or _client()
+    try:
+        return _parse_series(_get(client, f"/api/v1/series/{series_id}"))
+    except httpx.HTTPError as exc:
+        raise KomgaUnavailable(f"could not reach Komga at {settings.komga_url}: {exc}") from exc
+    finally:
+        if owns_client:
+            client.close()
+
+
 def update_metadata(series_id: str, patch: dict, client: Optional[httpx.Client] = None) -> None:
     """PATCH partial series metadata. Fields omitted from `patch` are left untouched."""
     owns_client = client is None

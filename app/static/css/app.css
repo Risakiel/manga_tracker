@@ -305,6 +305,107 @@ body {
     margin-bottom: 1.5rem;
 }
 
+.detail-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.detail-toolbar .detail-back-link {
+    margin-bottom: 0;
+}
+
+.detail-toolbar-actions {
+    display: flex;
+    gap: 0.6rem;
+}
+
+/* Identify modal: a grid of candidate cards (cover + title + source tag)
+   pulled live from MangaUpdates/MangaDex/AniList, styled after Komf's own
+   "Identify" picker -- radio input hidden, the whole card highlights via
+   :has() when its radio is checked. */
+.identify-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0 0;
+}
+
+.identify-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.6rem;
+    background: var(--secondary-background-color);
+    border: 2px solid var(--surface-border-color);
+    border-radius: 0.9rem;
+    text-align: center;
+    cursor: pointer;
+}
+
+.identify-card:has(input:checked) {
+    border-color: var(--primary-color);
+}
+
+.identify-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.identify-card-cover {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: var(--surface-border-color);
+}
+
+.identify-card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.identify-card-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.identify-footer {
+    text-align: right;
+    margin-top: 1rem;
+}
+
+.identify-recap {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.identify-recap li {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--surface-border-color);
+}
+
+.identify-recap li:last-child {
+    border-bottom: none;
+}
+
+.identify-ok {
+    color: #4ade80;
+    font-weight: 700;
+}
+
+.identify-fail {
+    color: #f87171;
+    font-weight: 700;
+}
+
 .detail-grid {
     display: grid;
     grid-template-columns: minmax(200px, 280px) 1fr;
@@ -824,5 +925,17 @@ body {
     .stat-tile-value-lg .tag {
         font-size: 1.3rem;
         padding: 0.4rem 0.9rem;
+    }
+
+    .detail-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .detail-toolbar-actions {
+        width: 100%;
+    }
+
+    .detail-toolbar-actions .btn-sync {
+        flex: 1;
     }
 }

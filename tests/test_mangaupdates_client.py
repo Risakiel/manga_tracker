@@ -162,9 +162,22 @@ def test_search_series_parses_results():
     respx.post("https://api.mangaupdates.com/v1/series/search").mock(
         return_value=httpx.Response(
             200,
-            json={"results": [{"record": {"series_id": 1, "title": "Foo", "url": "u"}, "hit_title": "Foo"}]},
+            json={
+                "results": [
+                    {
+                        "record": {
+                            "series_id": 1,
+                            "title": "Foo",
+                            "url": "u",
+                            "image": {"url": {"thumb": "https://img/foo-thumb.jpg"}},
+                        },
+                        "hit_title": "Foo",
+                    }
+                ]
+            },
         )
     )
     candidates = search_series("Foo")
     assert len(candidates) == 1
     assert candidates[0].title == "Foo"
+    assert candidates[0].cover_url == "https://img/foo-thumb.jpg"

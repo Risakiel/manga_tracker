@@ -146,3 +146,81 @@ def test_editing_mangaupdates_url_resyncs_off_the_new_link(client):
         assert manga.mangaupdates_id == 44838842124
         assert manga.mu_latest_chapter == 50
         assert manga.status == Status.complete
+
+
+@respx.mock
+def test_identify_search_route_returns_candidates_from_all_sources(client):
+    with Session(engine) as session:
+        manga = Manga(category=Category.manga, title_en="Search Target", server_folder="Search Target")
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    respx.post("https://api.mangaupdates.com/v1/series/search").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "record": {
+                            "series_id": 1,
+                            "title": "MU Found",
+                            "url": "https://www.mangaupdates.com/series/1/mu-found",
+                        }
+                    }
+                ]
+            },
+        )
+    )
+    respx.get("https://api.mangadex.org/manga").mock(return_value=httpx.Response(200, json={"data": []}))
+    respx.post("https://graphql.anilist.co").mock(
+        return_value=httpx.Response(200, json={"data": {"Page": {"media": []}}})
+    )
+
+    resp = client.post(f"/manga/{manga_id}/identify/search", data={"title": "Search Target"})
+
+    assert resp.status_code == 200
+    assert "MU Found" in resp.text
+    assert "MangaUpdates" in resp.text
+
+
+@respx.mock
+def test_identify_confirm_route_applies_pick_and_shows_recap(client):
+    with Session(engine) as session:
+        manga = Manga(category=Category.manga, title_en="Confirm Target", server_folder="Confirm Target")
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    respx.get("https://api.mangaupdates.com/v1/series/1").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "series_id": 1,
+                "title": "Confirmed Identity",
+                "url": "https://www.mangaupdates.com/series/1/confirmed-identity",
+            },
+        )
+    )
+
+    resp = client.post(f"/manga/{manga_id}/identify/confirm", data={"candidate": "mangaupdates:1"})
+
+    assert resp.status_code == 200
+    assert "Confirmed Identity" in resp.text
+    assert "pas encore lié" in resp.text
+
+    with Session(engine) as session:
+        manga = session.get(Manga, manga_id)
+        assert manga.mangaupdates_id == 1
+
+
+def test_identify_confirm_route_rejects_unknown_source(client):
+    with Session(engine) as session:
+        manga = Manga(category=Category.manga, title_en="Bad Candidate", server_folder="Bad Candidate")
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    resp = client.post(f"/manga/{manga_id}/identify/confirm", data={"candidate": "unknown:1"})
+
+    assert resp.status_code == 400

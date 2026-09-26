@@ -70,7 +70,11 @@ def test_search_candidates_parses_payload():
                 "data": {
                     "Page": {
                         "media": [
-                            {"id": 98347, "title": {"romaji": "Risou no Himo Seikatsu", "english": "The Ideal Sponger Life"}},
+                            {
+                                "id": 98347,
+                                "title": {"romaji": "Risou no Himo Seikatsu", "english": "The Ideal Sponger Life"},
+                                "coverImage": {"medium": "https://img/al-thumb.jpg"},
+                            },
                             {"id": 111, "title": {"romaji": "Something Else", "english": None}},
                         ]
                     }
@@ -82,6 +86,7 @@ def test_search_candidates_parses_payload():
     assert len(candidates) == 2
     assert candidates[0].id == 98347
     assert candidates[0].title == "The Ideal Sponger Life"
+    assert candidates[0].cover_url == "https://img/al-thumb.jpg"
 
 
 @respx.mock

@@ -42,6 +42,16 @@ class MangaDexSearchCandidate:
     id: str
     title: str
     url: str
+    cover_url: str = ""
+
+
+def _cover_url(manga_id: str, entry: dict) -> str:
+    for rel in entry.get("relationships") or []:
+        if rel.get("type") == "cover_art":
+            filename = (rel.get("attributes") or {}).get("fileName")
+            if filename:
+                return f"https://uploads.mangadex.org/covers/{manga_id}/{filename}.256.jpg"
+    return ""
 
 
 def _client() -> httpx.Client:
@@ -116,7 +126,12 @@ def search_manga(title: str, limit: int = 5, client: Optional[httpx.Client] = No
     try:
         resp = client.get(
             f"{BASE_URL}/manga",
-            params={"title": title, "limit": limit, "contentRating[]": _ALL_CONTENT_RATINGS},
+            params={
+                "title": title,
+                "limit": limit,
+                "contentRating[]": _ALL_CONTENT_RATINGS,
+                "includes[]": "cover_art",
+            },
         )
         resp.raise_for_status()
         candidates = []
@@ -126,7 +141,12 @@ def search_manga(title: str, limit: int = 5, client: Optional[httpx.Client] = No
             if not entry_title:
                 continue
             candidates.append(
-                MangaDexSearchCandidate(id=manga_id, title=entry_title, url=_series_url(manga_id, entry_title))
+                MangaDexSearchCandidate(
+                    id=manga_id,
+                    title=entry_title,
+                    url=_series_url(manga_id, entry_title),
+                    cover_url=_cover_url(manga_id, entry),
+                )
             )
         return candidates
     finally:

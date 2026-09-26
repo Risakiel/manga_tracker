@@ -74,12 +74,23 @@ scan interne de Komga. Suwayomi reste le point d'entrée pour ajouter/téléchar
 une fois ajouté là-bas, MangaTracker le récupère puis le relie à Komga automatiquement, sans
 action manuelle.
 
-Le push de métadonnées vers Komga est strictement non-destructif : un champ n'est envoyé
-que s'il est **vide et non verrouillé** côté Komga (jamais s'il a déjà une valeur, qu'elle
-vienne de toi, d'un scan ComicInfo.xml, ou d'un autre outil comme komf). Vérifié en direct
-sur une vraie bibliothèque (plus de 300 séries) : liens MangaUpdates ajoutés sans toucher
-les liens déjà présents, résumé/genres/titres alternatifs remplis seulement là où ils
-étaient réellement absents.
+Le push de métadonnées vers Komga lors de la synchro planifiée/manuelle est strictement
+non-destructif : un champ n'est envoyé que s'il est **vide et non verrouillé** côté Komga
+(jamais s'il a déjà une valeur, qu'elle vienne de toi, d'un scan ComicInfo.xml, ou d'un autre
+outil comme komf). Vérifié en direct sur une vraie bibliothèque (plus de 300 séries) : liens
+MangaUpdates ajoutés sans toucher les liens déjà présents, résumé/genres/titres alternatifs
+remplis seulement là où ils étaient réellement absents.
+
+### Identifier (remplace komf)
+
+Le bouton "Identifier" sur la fiche d'un manga cherche son titre sur les 3 sources déjà
+intégrées (MangaUpdates, MangaDex, AniList) en une seule requête, exactement le rôle que
+jouait komf directement sur Komga — sauf que MangaTracker devient ici la source de vérité :
+un résultat choisi met d'abord à jour la fiche locale (mêmes champs que le match manuel par
+source), puis, si le manga est déjà lié à une série Komga, **écrase** ce que Komga a pour les
+champs concernés (résumé, genres, titres alternatifs, lien MangaUpdates, tags Suwayomi) —
+contrairement au push non-destructif ci-dessus. Un champ verrouillé côté Komga reste
+protégé dans les deux cas ; le verrou existe pour ça.
 
 ### Partage NAS ("Dossier serveur")
 

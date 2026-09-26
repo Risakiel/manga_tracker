@@ -1,0 +1,27 @@
+<form hx-post="/manga/{{ manga.id }}/identify/search" hx-target="#identify-body" hx-swap="innerHTML">
+    <fieldset role="group">
+        <input type="text" name="title" value="{{ query }}" required autofocus>
+        <button type="submit">Search</button>
+    </fieldset>
+</form>
+{% if not candidates %}
+<p><small>Aucun résultat pour « {{ query }} ».</small></p>
+{% else %}
+<form hx-post="/manga/{{ manga.id }}/identify/confirm" hx-target="#identify-body" hx-swap="innerHTML">
+    <div class="identify-grid">
+        {% for c in candidates %}
+        <label class="identify-card">
+            <input type="radio" name="candidate" value="{{ c.source }}:{{ c.external_id }}" {{ "checked" if loop.first }} required>
+            <div class="identify-card-cover">
+                {% if c.cover_url %}<img src="{{ c.cover_url }}" alt="" loading="lazy">{% endif %}
+            </div>
+            <div class="identify-card-title">{{ c.title }}</div>
+            <span class="tag {{ {'mangaupdates': 'tag-blue', 'mangadex': 'tag-teal', 'anilist': 'tag-purple'}[c.source] }}">{{ c.source_label }}</span>
+        </label>
+        {% endfor %}
+    </div>
+    <footer class="identify-footer">
+        <button type="submit" class="btn-sync">Confirm</button>
+    </footer>
+</form>
+{% endif %}

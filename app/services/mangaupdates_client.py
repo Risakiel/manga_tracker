@@ -61,6 +61,7 @@ class MangaUpdatesSearchCandidate:
     title: str
     url: str
     year: Optional[str] = None
+    cover_url: str = ""
 
 
 def _throttle(min_interval: float) -> None:
@@ -145,6 +146,7 @@ def search_series(
                     title=record.get("title", ""),
                     url=record.get("url", ""),
                     year=record.get("year"),
+                    cover_url=(record.get("image") or {}).get("url", {}).get("thumb", ""),
                 )
             )
         return candidates

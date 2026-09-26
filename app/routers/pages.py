@@ -17,7 +17,9 @@ from app.models import Category, ChapterSource, Manga, Status, SyncLog
 from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client
 from app.services.excel_importer import import_excel
 from app.services.sync_service import (
+    apply_identify,
     enrich_with_anilist,
+    search_identify_candidates,
     sync_komga_library,
     sync_manga_all_sources,
     sync_manga_with_anilist_link,
@@ -346,6 +348,33 @@ def manga_mangadex_manual_match(manga_id: int, mangadex_id: str = Form(...), ses
         session.add(manga)
         session.commit()
     return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/identify/search", response_class=HTMLResponse)
+def manga_identify_search(
+    request: Request, manga_id: int, title: str = Form(...), session: Session = Depends(get_session)
+):
+    manga = session.get(Manga, manga_id)
+    if manga is None:
+        return HTMLResponse("Manga introuvable", status_code=404)
+    candidates = search_identify_candidates(title) if title.strip() else []
+    return templates.TemplateResponse(
+        request, "_identify_results.html", {"manga": manga, "query": title, "candidates": candidates}
+    )
+
+
+@router.post("/manga/{manga_id}/identify/confirm", response_class=HTMLResponse)
+def manga_identify_confirm(
+    request: Request, manga_id: int, candidate: str = Form(...), session: Session = Depends(get_session)
+):
+    manga = session.get(Manga, manga_id)
+    if manga is None:
+        return HTMLResponse("Manga introuvable", status_code=404)
+    source, _, external_id = candidate.partition(":")
+    if source not in {"mangaupdates", "mangadex", "anilist"} or not external_id:
+        return HTMLResponse("Sélection invalide", status_code=400)
+    result = apply_identify(session, manga, source, external_id)
+    return templates.TemplateResponse(request, "_identify_confirm.html", {"result": result})
 
 
 @router.post("/manga/{manga_id}/preferred-chapter-source")

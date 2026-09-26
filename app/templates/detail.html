@@ -4,7 +4,30 @@
 {% block page_title %}{{ manga.title_en }}{% endblock %}
 {% block content %}
 
-<a href="/" class="detail-back-link" data-discover="true" onclick="if (window.history.length > 1) { event.preventDefault(); history.back(); }">&larr; Retour</a>
+<div class="detail-toolbar">
+    <a href="/" class="detail-back-link" data-discover="true" onclick="if (window.history.length > 1) { event.preventDefault(); history.back(); }">&larr; Retour</a>
+    <div class="detail-toolbar-actions">
+        <button type="button" class="btn-sync" data-target="sources-modal">Sources externes</button>
+        <button type="button" class="btn-sync" data-target="identify-modal">Identifier</button>
+    </div>
+</div>
+
+<dialog id="identify-modal">
+    <article>
+        <header>
+            <button aria-label="Close" rel="prev" data-target="identify-modal"></button>
+            Identifier — {{ manga.title_en }}
+        </header>
+        <div id="identify-body">
+            <form hx-post="/manga/{{ manga.id }}/identify/search" hx-target="#identify-body" hx-swap="innerHTML">
+                <fieldset role="group">
+                    <input type="text" name="title" value="{{ manga.title_en }}" required autofocus>
+                    <button type="submit">Search</button>
+                </fieldset>
+            </form>
+        </div>
+    </article>
+</dialog>
 
 {% if manga.sync_error %}
 <div class="detail-error">
@@ -161,8 +184,12 @@
 {% endif %}
 
 {% set chapter_source = manga.preferred_chapter_source.value if manga.preferred_chapter_source else "mangaupdates" %}
+<dialog id="sources-modal">
 <article>
-    <h3>Sources externes</h3>
+    <header>
+        <button aria-label="Close" rel="prev" data-target="sources-modal"></button>
+        Sources externes
+    </header>
     <p>
         <small>
             MangaUpdates est la source par défaut pour le "dernier chapitre retenu" ; si elle n'a rien,
@@ -229,6 +256,7 @@
     </table>
     </div>
 </article>
+</dialog>
 
 {% if manga.needs_manual_match %}
 <article>

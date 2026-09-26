@@ -1,0 +1,16 @@
+<ul class="identify-recap">
+    <li>{{ result.source_label }} — <strong>{{ result.title }}</strong> <span class="identify-ok">✓</span></li>
+    {% if result.komga_linked %}
+    <li>
+        Komga —
+        {% if result.komga_pushed %}<span class="identify-ok">✓ métadonnées écrasées</span>
+        {% elif result.komga_error %}<span class="identify-fail">✗ {{ result.komga_error }}</span>
+        {% else %}<small>rien à mettre à jour</small>{% endif %}
+    </li>
+    {% else %}
+    <li>Komga — <small>pas encore lié (lance une synchro Komga)</small></li>
+    {% endif %}
+</ul>
+<footer class="identify-footer">
+    <button type="button" onclick="location.reload()">Fermer</button>
+</footer>

@@ -88,6 +88,29 @@ def test_search_manga_requests_every_content_rating():
 
 
 @respx.mock
+def test_search_manga_parses_cover_url_from_relationships():
+    respx.get("https://api.mangadex.org/manga").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": MANGA_ID,
+                        "attributes": SAMPLE_MANGA_PAYLOAD["data"]["attributes"],
+                        "relationships": [
+                            {"type": "author"},
+                            {"type": "cover_art", "attributes": {"fileName": "cover.jpg"}},
+                        ],
+                    }
+                ]
+            },
+        )
+    )
+    candidates = search_manga("Ideal Sponger Life")
+    assert candidates[0].cover_url == f"https://uploads.mangadex.org/covers/{MANGA_ID}/cover.jpg.256.jpg"
+
+
+@respx.mock
 def test_resolve_series_uses_direct_id_when_available():
     respx.get(f"https://api.mangadex.org/manga/{MANGA_ID}").mock(
         return_value=httpx.Response(200, json=SAMPLE_MANGA_PAYLOAD)

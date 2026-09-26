@@ -6,6 +6,7 @@ single code path (and a single place throttling/logging happens).
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
@@ -388,6 +389,172 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
         return True
     except komga_client.KomgaUnavailable:
         return False
+
+
+def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> bool:
+    """Overwrite-on-purpose variant of _push_metadata_to_komga, used only by
+    the explicit "Identify" action below: this app is meant to become the
+    master copy of a manga's identity, replacing what used to be komf's job,
+    so a freshly identified field replaces whatever Komga has -- unlike the
+    routine sync above, which only ever fills a gap. Per-field locks set by
+    hand in Komga are still respected either way; that's what a lock is for.
+    """
+    patch: dict = {}
+    if not series.summary_locked and manga.description:
+        patch["summary"] = manga.description
+    if not series.genres_locked and manga.genres:
+        patch["genres"] = manga.genres
+    if not series.alternate_titles_locked and manga.alt_titles:
+        patch["alternateTitles"] = [
+            {"label": komga_client.MANGAUPDATES_LINK_LABEL, "title": t} for t in manga.alt_titles
+        ]
+    if not series.links_locked and manga.mangaupdates_url:
+        other_links = [
+            link
+            for link in series.raw_links
+            if (link.get("label") or "").strip().lower() != komga_client.MANGAUPDATES_LINK_LABEL.lower()
+        ]
+        patch["links"] = other_links + [
+            {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
+        ]
+    if not series.tags_locked:
+        other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
+        suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
+        new_tags = other_tags + suwayomi_tags
+        if sorted(new_tags) != sorted(series.tags):
+            patch["tags"] = new_tags
+
+    if not patch:
+        return False
+    try:
+        komga_client.update_metadata(series.id, patch, client=client)
+        return True
+    except komga_client.KomgaUnavailable:
+        return False
+
+
+IDENTIFY_SOURCE_LABELS = {"mangaupdates": "MangaUpdates", "mangadex": "MangaDex", "anilist": "AniList"}
+
+
+@dataclass
+class IdentifyCandidate:
+    source: str
+    source_label: str
+    external_id: str
+    title: str
+    cover_url: str
+    url: str
+
+
+def search_identify_candidates(title: str) -> list[IdentifyCandidate]:
+    """Search all 3 integrated sources at once for the "Identify" modal --
+    the same job Komf's own identify search does against Komga directly,
+    just run from here instead. Each source is best-effort: one source
+    being down/rate-limited shouldn't hide results from the others."""
+    candidates: list[IdentifyCandidate] = []
+    try:
+        for c in mangaupdates_client.search_series(title):
+            candidates.append(
+                IdentifyCandidate("mangaupdates", IDENTIFY_SOURCE_LABELS["mangaupdates"], str(c.series_id), c.title, c.cover_url, c.url)
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("MangaUpdates identify search failed: %s", exc)
+    try:
+        for c in mangadex_client.search_manga(title):
+            candidates.append(
+                IdentifyCandidate("mangadex", IDENTIFY_SOURCE_LABELS["mangadex"], c.id, c.title, c.cover_url, c.url)
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("MangaDex identify search failed: %s", exc)
+    try:
+        for c in anilist_client.search_candidates(title):
+            candidates.append(
+                IdentifyCandidate(
+                    "anilist", IDENTIFY_SOURCE_LABELS["anilist"], str(c.id), c.title, c.cover_url, f"https://anilist.co/manga/{c.id}"
+                )
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("AniList identify search failed: %s", exc)
+    return candidates
+
+
+@dataclass
+class IdentifyResult:
+    source_label: str
+    title: str
+    komga_linked: bool
+    komga_pushed: bool
+    komga_error: Optional[str] = None
+
+
+def apply_identify(session: Session, manga: Manga, source: str, external_id: str) -> IdentifyResult:
+    """Apply the user's pick from the "Identify" modal: re-link the chosen
+    source exactly like its dedicated manual-match route does, then -- since
+    this app is meant to be the master copy now -- force-push the result to
+    Komga if this manga is already linked there."""
+    now = datetime.now(timezone.utc)
+    if source == "mangaupdates":
+        series = mangaupdates_client.fetch_series(int(external_id))
+        manga.mangaupdates_id = series.series_id
+        manga.mangaupdates_url = series.url
+        manga.needs_manual_match = False
+        manga.match_candidates = []
+        manga.status_raw = series.status_raw
+        manga.status = _derive_status(series.status_raw, series.completed)
+        manga.mu_latest_chapter = series.latest_chapter
+        manga.author = ", ".join(series.authors) or manga.author
+        manga.artist = ", ".join(series.artists) or manga.artist
+        manga.genres = series.genres or manga.genres
+        manga.alt_titles = series.associated_titles or manga.alt_titles
+        manga.cover_url = series.cover_url or manga.cover_url
+        manga.description = series.description or manga.description
+        manga.sync_error = None
+        title = series.title
+    elif source == "mangadex":
+        result = mangadex_client.fetch_manga(external_id)
+        manga.mangadex_id = result.id
+        manga.mangadex_url = result.url
+        manga.mangadex_latest_chapter = result.latest_chapter
+        manga.mangadex_needs_manual_match = False
+        manga.mangadex_match_candidates = []
+        title = result.title
+    elif source == "anilist":
+        media = anilist_client.fetch_media_by_id(int(external_id))
+        manga.anilist_id = media.id
+        manga.anilist_url = media.url
+        manga.anilist_latest_chapter = media.chapters
+        manga.anilist_needs_manual_match = False
+        manga.anilist_match_candidates = []
+        title = media.title
+    else:
+        raise ValueError(f"unknown identify source: {source}")
+
+    manga.last_synced_at = now
+    manga.updated_at = now
+    session.add(manga)
+    session.add(
+        SyncLog(manga_id=manga.id, source=SyncSource(source), status=SyncStatus.success, message=f"identified via UI: {title}")
+    )
+    session.commit()
+
+    komga_linked = bool(manga.komga_series_id)
+    komga_pushed = False
+    komga_error = None
+    if komga_linked:
+        try:
+            with komga_client.open_client() as client:
+                series = komga_client.fetch_series_by_id(manga.komga_series_id, client=client)
+                komga_pushed = force_push_metadata_to_komga(manga, series, client=client)
+        except komga_client.KomgaUnavailable as exc:
+            komga_error = str(exc)
+
+    return IdentifyResult(
+        source_label=IDENTIFY_SOURCE_LABELS[source],
+        title=title,
+        komga_linked=komga_linked,
+        komga_pushed=komga_pushed,
+        komga_error=komga_error,
+    )
 
 
 def sync_komga_library(

@@ -61,6 +61,7 @@ query ($search: String, $perPage: Int) {
     media(search: $search, type: MANGA) {
       id
       title { romaji english native }
+      coverImage { medium }
     }
   }
 }
@@ -96,6 +97,7 @@ class AniListMedia:
 class AniListSearchCandidate:
     id: int
     title: str
+    cover_url: str = ""
 
 
 def extract_id_from_url(url: str) -> Optional[int]:
@@ -174,7 +176,13 @@ def search_candidates(
             title_text = titles.get("english") or titles.get("romaji") or titles.get("native") or ""
             if entry.get("id") is None or not title_text:
                 continue
-            candidates.append(AniListSearchCandidate(id=entry["id"], title=title_text))
+            candidates.append(
+                AniListSearchCandidate(
+                    id=entry["id"],
+                    title=title_text,
+                    cover_url=(entry.get("coverImage") or {}).get("medium", ""),
+                )
+            )
         return candidates
     finally:
         if owns_client:
