@@ -1152,3 +1152,52 @@ body {
 .jobs-table form {
     margin: 0;
 }
+
+/* Historique */
+.logs-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+    gap: 0.5rem 0.75rem;
+    align-items: end;
+    margin-bottom: 0.75rem;
+}
+
+.logs-filters label {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.logs-filters select,
+.logs-filters input {
+    margin: 0.2rem 0 0;
+}
+
+.logs-filters-search {
+    grid-column: span 2;
+}
+
+.logs-filters-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.logs-filters-actions .btn-sync {
+    min-height: 2.4rem;
+}
+
+.logs-table tr.log-job td {
+    background: rgba(var(--primary-rgb), 0.08);
+}
+
+.logs-pagination {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+}
+
+@media (max-width: 640px) {
+    .logs-filters-search {
+        grid-column: auto;
+    }
+}

@@ -4,22 +4,81 @@
 {% block page_title %}Historique{% endblock %}
 {% block content %}
 
+<form method="get" action="/logs" class="logs-filters">
+    <label>Source
+        <select name="source">
+            <option value="">Toutes</option>
+            {% for value, label in source_labels.items() %}
+            <option value="{{ value }}" {{ "selected" if filters.source == value }}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>Tâche
+        <select name="job">
+            <option value="">Toutes</option>
+            {% for value, label in job_labels.items() %}
+            <option value="{{ value }}" {{ "selected" if filters.job == value }}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>Statut
+        <select name="status">
+            <option value="">Tous</option>
+            {% for value, label in status_labels.items() %}
+            <option value="{{ value }}" {{ "selected" if filters.status == value }}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>Déclencheur
+        <select name="trigger">
+            <option value="">Tous</option>
+            <option value="planifié" {{ "selected" if filters.trigger == "planifié" }}>Planifié</option>
+            <option value="manuel" {{ "selected" if filters.trigger == "manuel" }}>Manuel</option>
+        </select>
+    </label>
+    <label>Du
+        <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </label>
+    <label>Au
+        <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </label>
+    <label class="logs-filters-search">Recherche
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="Message ou titre du manga">
+    </label>
+    <div class="logs-filters-actions">
+        <button type="submit" class="btn-sync">Filtrer</button>
+        {% if active_filters %}<a href="/logs">Réinitialiser</a>{% endif %}
+    </div>
+</form>
 
-<table>
-    <thead><tr><th>Date</th><th>Source</th><th>Statut</th><th>Manga</th><th>Message</th></tr></thead>
+<p><small>{{ total }} événement(s){% if pages > 1 %} — page {{ page }} / {{ pages }}{% endif %}</small></p>
+
+<div class="jobs-table-wrap">
+<table class="logs-table">
+    <thead><tr><th>Date</th><th>Source</th><th>Statut</th><th>Déclencheur</th><th>Durée</th><th>Manga</th><th>Message</th></tr></thead>
     <tbody>
     {% for log in logs %}
-    <tr>
-        <td><small>{{ log.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</small></td>
-        <td>{{ log.source.value }}</td>
-        <td>{{ "✅" if log.status.value == "success" else "❌" }}</td>
-        <td>{% if log.manga_id %}<a href="/manga/{{ log.manga_id }}">#{{ log.manga_id }}</a>{% else %}—{% endif %}</td>
+    <tr class="{{ 'log-job' if log.source.value == 'job' }}">
+        <td><small>{{ log.created_at | localtime("%d/%m/%Y %H:%M:%S") }}</small></td>
+        <td>{{ source_labels.get(log.source.value, log.source.value) }}</td>
+        <td title="{{ status_labels.get(log.status.value, log.status.value) }}">{{ status_labels.get(log.status.value, log.status.value).split(" ")[0] }}</td>
+        <td>{% if log.trigger %}<span class="tag {{ 'tag-blue' if log.trigger == 'planifié' else 'tag-amber' }}">{{ log.trigger | capitalize }}</span>{% endif %}</td>
+        <td><small>{% if log.finished_at %}{{ log.duration_seconds | duration }}{% elif log.status.value == "running" %}en cours{% endif %}</small></td>
+        <td>{% if log.manga_id %}<a href="/manga/{{ log.manga_id }}">{{ manga_titles.get(log.manga_id, "#" ~ log.manga_id) }}</a>{% else %}—{% endif %}</td>
         <td>{{ log.message }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="5">Aucun événement pour le moment.</td></tr>
+    <tr><td colspan="7">{{ "Aucun événement ne correspond à ces filtres." if active_filters else "Aucun événement pour le moment." }}</td></tr>
     {% endfor %}
     </tbody>
 </table>
+</div>
+
+{% if pages > 1 %}
+<nav class="logs-pagination">
+    {% if page > 1 %}<a href="/logs?{{ query_string ~ '&' if query_string }}page={{ page - 1 }}">← Plus récents</a>{% else %}<span></span>{% endif %}
+    {% if page < pages %}<a href="/logs?{{ query_string ~ '&' if query_string }}page={{ page + 1 }}">Plus anciens →</a>{% endif %}
+</nav>
+{% endif %}
 
 {% endblock %}

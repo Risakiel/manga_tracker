@@ -32,11 +32,14 @@ class SyncSource(str, Enum):
     komga = "komga"
     library = "library"
     excel = "excel"
+    # One row per run of a scheduled/manual job (see app/services/jobs.py).
+    job = "job"
 
 
 class SyncStatus(str, Enum):
     success = "success"
     error = "error"
+    running = "running"
 
 
 class ChapterSource(str, Enum):
@@ -221,6 +224,20 @@ class SyncLog(SQLModel, table=True):
     status: SyncStatus
     message: str = Field(default="", sa_column=Column(Text))
     created_at: datetime = Field(default_factory=utcnow, index=True)
+    # Only set on SyncSource.job rows: which job ran, who triggered it
+    # ("planifié" / "manuel") and when it ended (created_at = start).
+    job_id: Optional[str] = Field(default=None, index=True)
+    trigger: Optional[str] = None
+    finished_at: Optional[datetime] = None
+
+    @property
+    def duration_seconds(self) -> Optional[float]:
+        if self.finished_at is None:
+            return None
+        start, end = self.created_at, self.finished_at
+        if (start.tzinfo is None) != (end.tzinfo is None):
+            start, end = start.replace(tzinfo=None), end.replace(tzinfo=None)
+        return max((end - start).total_seconds(), 0.0)
 
 
 class ScheduledJob(SQLModel, table=True):
