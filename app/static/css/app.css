@@ -1040,7 +1040,7 @@ body {
     }
 }
 
-/* "Komga" box on the detail page (below Description). */
+/* "Komga" box on the detail page (between the stat rows and Auteur). */
 .komga-info {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -1116,4 +1116,8 @@ body {
     .komga-info dt {
         margin-top: 0.4rem;
     }
+}
+
+.komga-box {
+    margin: 0;
 }
