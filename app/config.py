@@ -28,12 +28,19 @@ class Settings(BaseSettings):
     sync_interval_hours: float = 24.0
     # Suwayomi is where manga actually get added/downloaded -- a short
     # interval here is what makes a Suwayomi addition show up in
-    # MangaTracker (and, once downloaded, get linked to Komga -- see
-    # scheduler.py, which chains a Komga sync right after this one) without
-    # the user ever needing to click "sync now".
+    # MangaTracker without the user ever needing to click "sync now".
     suwayomi_sync_interval_hours: float = 0.25
+    # Komga linking/metadata push. Only defaults: every interval can be
+    # changed from the "Planification de tâches" page, which stores the
+    # override in the database (see app/services/jobs.py).
+    komga_sync_interval_hours: float = 1.0
+    # Fast pass that only links Komga series no manga points to yet (a
+    # series Komga just picked up after a Suwayomi download).
+    komga_new_series_interval_hours: float = 0.25
     library_sync_interval_hours: float = 24.0
     enable_scheduler: bool = True
+    # Timezone used to display job run times in the UI.
+    display_timezone: str = "Europe/Paris"
 
     mangaupdates_min_request_interval_seconds: float = 1.0
     anilist_min_request_interval_seconds: float = 0.7

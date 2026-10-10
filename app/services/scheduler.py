@@ -1,52 +1,77 @@
 import logging
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.database import session_scope
-from app.services import library_client
-from app.services.sync_service import (
-    sync_all_manga_sources,
-    sync_komga_library,
-    sync_server_folders,
-    sync_suwayomi_library,
-)
+from app.models import ScheduledJob
+from app.services import jobs
 
 logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
 
+# Delay before a job that is already overdue at startup (e.g. a daily job
+# whose last run was more than a day ago) fires, so a container restart
+# doesn't hammer every source in the very first seconds.
+_STARTUP_DELAY = timedelta(minutes=1)
 
-def _run_manga_sources_sync() -> None:
+
+def _first_run_time(job_id: str, minutes: int) -> datetime:
+    """Resume each job's cadence from its last run instead of restarting the
+    countdown on every container restart -- Unraid restarts the container on
+    every image update, which would otherwise keep pushing a daily job back
+    forever."""
+    now = datetime.now(timezone.utc)
     with session_scope() as session:
-        count = sync_all_manga_sources(session)
-        logger.info("scheduled manga sources sync done: %s manga(s)", count)
+        row = session.get(ScheduledJob, job_id)
+        last = row.last_finished_at if row else None
+    if last is None:
+        return now + _STARTUP_DELAY
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return max(last + timedelta(minutes=minutes), now + _STARTUP_DELAY)
 
 
-def _run_suwayomi_sync() -> None:
-    with session_scope() as session:
-        result = sync_suwayomi_library(session)
-        logger.info("scheduled Suwayomi sync done: %s", result)
-    # Chained rather than independently scheduled: a manga added in Suwayomi
-    # only has anything for Komga to find once this same run has created (or
-    # updated) it, so running Komga right after -- on Suwayomi's short
-    # interval -- gets it linked as soon as the download + Komga's own scan
-    # (triggered by sync_komga_library itself) have caught up, instead of
-    # waiting on a separately-scheduled, likely slower interval.
-    if settings.komga_url:
-        _run_komga_sync()
+def _schedule(scheduler: BackgroundScheduler, job_id: str) -> None:
+    if scheduler.get_job(job_id) is not None:
+        scheduler.remove_job(job_id)
+    job = jobs.get(job_id)
+    if job is None or not job.is_available():
+        return
+    minutes = jobs.interval_minutes(job_id)
+    if minutes <= 0:
+        return
+    scheduler.add_job(
+        jobs.run_job,
+        "interval",
+        minutes=minutes,
+        args=[job_id, "planifié"],
+        id=job_id,
+        next_run_time=_first_run_time(job_id, minutes),
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=None,
+    )
 
 
-def _run_komga_sync() -> None:
-    with session_scope() as session:
-        result = sync_komga_library(session)
-        logger.info("scheduled Komga sync done: %s", result)
+def reschedule(job_id: str) -> None:
+    """Apply an interval change made from the UI to the running scheduler."""
+    if _scheduler is not None:
+        _schedule(_scheduler, job_id)
 
 
-def _run_library_sync() -> None:
-    with session_scope() as session:
-        result = sync_server_folders(session)
-        logger.info("scheduled server-folders sync done: %s", result)
+def next_run_time(job_id: str) -> Optional[datetime]:
+    if _scheduler is None:
+        return None
+    job = _scheduler.get_job(job_id)
+    return job.next_run_time if job else None
+
+
+def is_running() -> bool:
+    return _scheduler is not None
 
 
 def start_scheduler() -> BackgroundScheduler | None:
@@ -58,39 +83,19 @@ def start_scheduler() -> BackgroundScheduler | None:
         return _scheduler
 
     scheduler = BackgroundScheduler(timezone="UTC")
-    scheduler.add_job(
-        _run_manga_sources_sync,
-        "interval",
-        hours=settings.sync_interval_hours,
-        id="manga_sources_sync",
-        next_run_time=None,
-    )
-    scheduler.add_job(
-        _run_suwayomi_sync,
-        "interval",
-        hours=settings.suwayomi_sync_interval_hours,
-        id="suwayomi_sync",
-        next_run_time=None,
-    )
-    if library_client.is_mounted():
-        scheduler.add_job(
-            _run_library_sync,
-            "interval",
-            hours=settings.library_sync_interval_hours,
-            id="library_sync",
-            next_run_time=None,
-        )
+    for job_id in jobs.JOBS:
+        _schedule(scheduler, job_id)
     scheduler.start()
     _scheduler = scheduler
-    logger.info(
-        "scheduler started: manga sources every %sh, suwayomi every %sh, komga %s, server-folders %s",
-        settings.sync_interval_hours,
-        settings.suwayomi_sync_interval_hours,
-        "chained right after every Suwayomi sync" if settings.komga_url else "disabled (no KOMGA_URL)",
-        f"every {settings.library_sync_interval_hours}h"
-        if library_client.is_mounted()
-        else "disabled (NAS not mounted)",
-    )
+    for job_id, job in jobs.JOBS.items():
+        scheduled = scheduler.get_job(job_id)
+        logger.info(
+            "scheduler: %s -> %s",
+            job_id,
+            f"every {jobs.interval_minutes(job_id)} min, next run {scheduled.next_run_time}"
+            if scheduled
+            else ("disabled" if job.is_available() else f"unavailable ({job.unavailable_reason})"),
+        )
     return scheduler
 
 

@@ -57,8 +57,16 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 | `KOMGA_API_KEY` | Clé API Komga (Settings > API Keys, compte ADMIN requis pour l'écriture) | vide |
 | `SYNC_INTERVAL_HOURS` | Fréquence de sync MangaUpdates (+ MangaDex/AniList en repli) | 24 |
 | `SUWAYOMI_SYNC_INTERVAL_HOURS` | Fréquence de réconciliation/import Suwayomi (voir ci-dessous) | 0.25 (15 min) |
+| `KOMGA_SYNC_INTERVAL_HOURS` | Fréquence de la synchro Komga complète (liaison + progression + métadonnées) | 1 |
+| `KOMGA_NEW_SERIES_INTERVAL_HOURS` | Fréquence de la liaison rapide des nouvelles séries Komga | 0.25 (15 min) |
 | `LIBRARY_SYNC_INTERVAL_HOURS` | Fréquence de synchro des "Dossiers serveur" (voir la page Configuration) | 24 |
+| `DISPLAY_TIMEZONE` | Fuseau horaire d'affichage des exécutions de tâches | `Europe/Paris` |
 | `ENABLE_SCHEDULER` | Désactive les jobs automatiques (sync manuelle uniquement) | true |
+
+Les variables `*_INTERVAL_HOURS` ne sont que des valeurs par défaut : la page **Configuration →
+Planification de tâches** liste toutes les tâches planifiées (dernière/prochaine exécution,
+avancement, bouton « Lancer ») et permet de changer leur fréquence (de 15 min à hebdomadaire,
+ou désactivée). Ce choix est enregistré en base et prime sur la variable d'environnement.
 | `LIBRARY_ROOT` | Chemin (côté conteneur) du partage NAS monté en lecture seule | `/library` |
 
 ### Komga
@@ -75,10 +83,11 @@ enregistré, puis **épinglé** — la synchro automatique ne le remplacera plus
 autre série (même hors des bibliothèques `Manga`/`Pornhwa`). Laisser le champ vide délie le
 manga.
 
-La synchro Komga n'a pas son propre planning : elle s'enchaîne automatiquement juste après
-chaque synchro Suwayomi (donc toutes les `SUWAYOMI_SYNC_INTERVAL_HOURS`), et demande d'abord
-à Komga de rescanner ses bibliothèques avant de récupérer les séries, pour ne pas dépendre du
-scan interne de Komga. Suwayomi reste le point d'entrée pour ajouter/télécharger un manga —
+La synchro Komga a deux tâches planifiées : une passe rapide (toutes les 15 min par défaut)
+qui ne relie que les séries Komga pas encore associées à un manga, et une synchro complète
+(toutes les heures par défaut) qui rafraîchit aussi la progression de lecture et les
+métadonnées. Toutes deux demandent d'abord à Komga de rescanner ses bibliothèques avant de
+récupérer les séries, pour ne pas dépendre du scan interne de Komga. Suwayomi reste le point d'entrée pour ajouter/télécharger un manga —
 une fois ajouté là-bas, MangaTracker le récupère puis le relie à Komga automatiquement, sans
 action manuelle.
 

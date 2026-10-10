@@ -1,0 +1,73 @@
+{% set any_running = rows | selectattr("progress.running") | list | length > 0 %}
+<div id="jobs-table" class="jobs-table-wrap"
+     {% if any_running %}hx-get="/partials/jobs-table" hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
+<table class="jobs-table">
+    <thead>
+        <tr>
+            <th>Tâche</th>
+            <th>Fréquence</th>
+            <th>Dernière exécution</th>
+            <th>Prochaine exécution</th>
+            <th>Avancement</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+    {% set job = row.job %}
+    {% set progress = row.progress %}
+    <tr>
+        <td>
+            <strong>{% if job.page_url and job.page_url != "/" %}<a href="{{ job.page_url }}">{{ job.label }}</a>{% else %}{{ job.label }}{% endif %}</strong><br>
+            <small>{{ job.description }}</small>
+        </td>
+        <td>
+            <form method="post" action="/jobs/{{ job.id }}/interval" class="jobs-interval-form">
+                <select name="minutes" onchange="this.form.submit()" aria-label="Fréquence de {{ job.label }}">
+                    {% for value, label in row.choices %}
+                    <option value="{{ value }}" {{ "selected" if value == row.interval_minutes }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <noscript><button type="submit">OK</button></noscript>
+            </form>
+            {% if row.is_default_interval %}<small>Par défaut</small>{% else %}<small>Défaut : {{ row.default_interval_label | lower }}</small>{% endif %}
+        </td>
+        <td>
+            {% if row.record and row.record.last_finished_at %}
+            {{ "✅" if row.record.last_status == "success" else "❌" }} {{ row.record.last_finished_at | localtime }}<br>
+            <small>{{ row.record.last_message }}</small>
+            {% elif row.record and row.record.last_started_at %}
+            Démarrée le {{ row.record.last_started_at | localtime }}
+            {% else %}
+            <small>Jamais exécutée</small>
+            {% endif %}
+        </td>
+        <td>
+            {% if not row.available %}
+            <small>Indisponible ({{ job.unavailable_reason }})</small>
+            {% elif row.interval_minutes == 0 %}
+            <small>Désactivée</small>
+            {% elif row.next_run %}
+            {{ row.next_run | localtime }}
+            {% else %}
+            <small>—</small>
+            {% endif %}
+        </td>
+        <td>
+            {% if progress.running %}
+            <progress value="{{ progress.done }}" max="{{ progress.total if progress.total else 1 }}"></progress>
+            <small>En cours : {{ progress.done }} / {{ progress.total }}</small>
+            {% else %}
+            <small>Inactive</small>
+            {% endif %}
+        </td>
+        <td>
+            <form method="post" action="/jobs/{{ job.id }}/run">
+                <button type="submit" class="btn-sync" {{ "disabled" if progress.running or not row.available }}>{% include "_sync_icon.html" %}<span>Lancer</span></button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>

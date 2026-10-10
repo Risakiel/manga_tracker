@@ -3,13 +3,9 @@
 {% block page_title %}Configuration{% endblock %}
 {% block content %}
 
-<p>Outils de maintenance de la solution : import de données, synchronisation avec les sources externes et historique des événements.</p>
+<p>Outils de maintenance de la solution : synchronisation avec les sources externes et historique des événements.</p>
 
 <div class="config-grid">
-    <a class="config-card" href="/import">
-        <h3>📥 Import Excel</h3>
-        <p>Importer ou mettre à jour la liste des mangas suivis depuis un fichier Excel.</p>
-    </a>
     <a class="config-card" href="/suwayomi">
         <h3>🔗 Suwayomi</h3>
         <p>Synchroniser la bibliothèque Suwayomi et résoudre les mangas non liés à MangaUpdates.</p>
@@ -21,6 +17,10 @@
     <a class="config-card" href="/server-folders">
         <h3>📁 Dossiers serveur</h3>
         <p>Comparer et corriger le champ "Dossier serveur" de chaque manga avec les vrais dossiers du NAS.</p>
+    </a>
+    <a class="config-card" href="/jobs">
+        <h3>⏱️ Planification de tâches</h3>
+        <p>Suivre les synchronisations automatiques, les relancer à la main et choisir leur fréquence.</p>
     </a>
     <a class="config-card" href="/logs">
         <h3>🕒 Historique</h3>

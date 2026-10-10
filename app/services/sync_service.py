@@ -87,7 +87,9 @@ def sync_manga_with_mangaupdates(session: Session, manga: Manga, client: httpx.C
     session.commit()
 
 
-def sync_all_manga_sources(session: Session) -> int:
+def sync_all_manga_sources(
+    session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
+) -> int:
     """Bulk version of sync_manga_all_sources: MangaUpdates first for every
     manga, falling through to MangaDex/AniList only for whichever ones
     still have no usable chapter count -- an already fully-linked manga
@@ -96,11 +98,16 @@ def sync_all_manga_sources(session: Session) -> int:
     per-source User-Agent mangadex_client's own client would otherwise set).
     """
     mangas = session.exec(select(Manga)).all()
+    total = len(mangas)
     count = 0
+    if progress_callback:
+        progress_callback(0, total)
     with httpx.Client(timeout=15.0) as client:
         for manga in mangas:
             sync_manga_all_sources(session, manga, client=client)
             count += 1
+            if progress_callback:
+                progress_callback(count, total)
     return count
 
 

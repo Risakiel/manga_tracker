@@ -221,3 +221,18 @@ class SyncLog(SQLModel, table=True):
     status: SyncStatus
     message: str = Field(default="", sa_column=Column(Text))
     created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class ScheduledJob(SQLModel, table=True):
+    """Per-job scheduling settings and last-run bookkeeping for the
+    "Planification de tâches" page. One row per job id from
+    app/services/jobs.py, created lazily the first time the job runs or its
+    interval is changed. interval_minutes overrides the env-var default
+    (NULL = use the default, 0 = disabled)."""
+
+    job_id: str = Field(primary_key=True)
+    interval_minutes: Optional[int] = None
+    last_started_at: Optional[datetime] = None
+    last_finished_at: Optional[datetime] = None
+    last_status: str = ""
+    last_message: str = Field(default="", sa_column=Column(Text))

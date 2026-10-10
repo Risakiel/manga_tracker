@@ -4,16 +4,18 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
-from app.models import Category, ChapterSource, Manga, Status, SyncLog
+from app.models import Category, ChapterSource, Manga, ScheduledJob, Status, SyncLog
+from app.services import jobs, scheduler
 from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client
 from app.services.excel_importer import import_excel
 from app.services.sync_service import (
@@ -51,30 +53,28 @@ def _tag_color(name: str) -> str:
 
 templates.env.filters["tag_color"] = _tag_color
 
-# In-memory progress for the bulk background jobs -- all take several
-# minutes (one HTTP request per manga, throttled), so the dashboard polls
-# these instead of leaving the user staring at a button that looks like it
-# did nothing. A single-process homelab app doesn't need this in the DB.
-_full_sync_progress = {"running": False, "total": 0, "done": 0}
-_suwayomi_sync_progress = {"running": False, "total": 0, "done": 0, "matched": 0, "created": 0, "error": None}
-_komga_sync_progress = {
-    "running": False,
-    "total": 0,
-    "done": 0,
-    "matched": 0,
-    "unmatched": 0,
-    "pushed": 0,
-    "error": None,
-}
-_library_sync_progress = {
-    "running": False,
-    "total": 0,
-    "done": 0,
-    "checked": 0,
-    "matched": 0,
-    "unmatched": 0,
-    "error": None,
-}
+# Progress of the bulk background jobs lives in app/services/jobs.py, shared
+# with the scheduler so a manual and a scheduled run can't overlap and both
+# show up the same way in the UI.
+_full_sync_progress = jobs.state("manga_sources_sync")
+_suwayomi_sync_progress = jobs.state("suwayomi_sync")
+_komga_sync_progress = jobs.state("komga_sync")
+_library_sync_progress = jobs.state("library_sync")
+
+
+def _localtime(value: Optional[datetime]) -> str:
+    if value is None:
+        return "—"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    try:
+        tz = ZoneInfo(settings.display_timezone)
+    except Exception:  # noqa: BLE001 -- unknown/missing tz data: fall back to UTC
+        tz = timezone.utc
+    return value.astimezone(tz).strftime("%d/%m/%Y %H:%M")
+
+
+templates.env.filters["localtime"] = _localtime
 
 
 def _filtered_mangas(
@@ -423,25 +423,9 @@ def manga_set_preferred_chapter_source(
 
 
 @router.post("/sync-all")
-def sync_all(background_tasks: BackgroundTasks):
-    from app.database import session_scope
-
-    if _full_sync_progress["running"]:
+def sync_all():
+    if not jobs.start_in_background("manga_sources_sync"):
         return RedirectResponse("/?flash=Une+synchronisation+est+déjà+en+cours...", status_code=303)
-
-    def _job():
-        with session_scope() as session:
-            mangas = session.exec(select(Manga)).all()
-            _full_sync_progress.update(running=True, total=len(mangas), done=0)
-            try:
-                with httpx.Client(timeout=15.0) as client:
-                    for manga in mangas:
-                        sync_manga_all_sources(session, manga, client=client)
-                        _full_sync_progress["done"] += 1
-            finally:
-                _full_sync_progress["running"] = False
-
-    background_tasks.add_task(_job)
     return RedirectResponse("/?flash=Synchronisation+lancée+en+arrière-plan...", status_code=303)
 
 
@@ -451,28 +435,9 @@ def sync_progress(request: Request):
 
 
 @router.post("/suwayomi/sync")
-def suwayomi_sync(background_tasks: BackgroundTasks):
-    from app.database import session_scope
-
-    if _suwayomi_sync_progress["running"]:
+def suwayomi_sync():
+    if not jobs.start_in_background("suwayomi_sync"):
         return RedirectResponse("/suwayomi?flash=Une+synchronisation+Suwayomi+est+déjà+en+cours...", status_code=303)
-
-    def _job():
-        _suwayomi_sync_progress.update(running=True, total=0, done=0, matched=0, created=0, error=None)
-
-        def _on_progress(done: int, total: int) -> None:
-            _suwayomi_sync_progress.update(done=done, total=total)
-
-        try:
-            with session_scope() as session:
-                result = sync_suwayomi_library(session, progress_callback=_on_progress)
-                _suwayomi_sync_progress["matched"] = result.get("matched", 0)
-                _suwayomi_sync_progress["created"] = result.get("created", 0)
-                _suwayomi_sync_progress["error"] = result.get("error")
-        finally:
-            _suwayomi_sync_progress["running"] = False
-
-    background_tasks.add_task(_job)
     return RedirectResponse("/suwayomi?flash=Synchronisation+Suwayomi+lancée+en+arrière-plan...", status_code=303)
 
 
@@ -498,29 +463,9 @@ def suwayomi_page(request: Request, session: Session = Depends(get_session)):
 
 
 @router.post("/komga/sync")
-def komga_sync(background_tasks: BackgroundTasks):
-    from app.database import session_scope
-
-    if _komga_sync_progress["running"]:
+def komga_sync():
+    if not jobs.start_in_background("komga_sync"):
         return RedirectResponse("/komga?flash=Une+synchronisation+Komga+est+déjà+en+cours...", status_code=303)
-
-    def _job():
-        _komga_sync_progress.update(running=True, total=0, done=0, matched=0, unmatched=0, pushed=0, error=None)
-
-        def _on_progress(done: int, total: int) -> None:
-            _komga_sync_progress.update(done=done, total=total)
-
-        try:
-            with session_scope() as session:
-                result = sync_komga_library(session, progress_callback=_on_progress)
-                _komga_sync_progress["matched"] = result.get("matched", 0)
-                _komga_sync_progress["unmatched"] = result.get("unmatched", 0)
-                _komga_sync_progress["pushed"] = result.get("pushed", 0)
-                _komga_sync_progress["error"] = result.get("error")
-        finally:
-            _komga_sync_progress["running"] = False
-
-    background_tasks.add_task(_job)
     return RedirectResponse("/komga?flash=Synchronisation+Komga+lancée+en+arrière-plan...", status_code=303)
 
 
@@ -609,7 +554,7 @@ def server_folders_page(request: Request, session: Session = Depends(get_session
             "mounted": mounted,
             "library_root": str(settings.library_root),
             "rows": rows,
-            "sync_interval_hours": settings.library_sync_interval_hours,
+            "sync_interval_label": jobs.interval_label(jobs.interval_minutes("library_sync", session)),
             "progress": _library_sync_progress,
             "flash": request.query_params.get("flash"),
         },
@@ -628,29 +573,9 @@ def server_folders_apply(manga_id: int, folder: str = Form(...), session: Sessio
 
 
 @router.post("/server-folders/sync")
-def server_folders_sync(background_tasks: BackgroundTasks):
-    from app.database import session_scope
-
-    if _library_sync_progress["running"]:
+def server_folders_sync():
+    if not jobs.start_in_background("library_sync"):
         return RedirectResponse("/server-folders?flash=Une+synchronisation+est+déjà+en+cours...", status_code=303)
-
-    def _job():
-        _library_sync_progress.update(running=True, total=0, done=0, checked=0, matched=0, unmatched=0, error=None)
-
-        def _on_progress(done: int, total: int) -> None:
-            _library_sync_progress.update(done=done, total=total)
-
-        try:
-            with session_scope() as session:
-                result = sync_server_folders(session, progress_callback=_on_progress)
-                _library_sync_progress["checked"] = result.get("checked", 0)
-                _library_sync_progress["matched"] = result.get("matched", 0)
-                _library_sync_progress["unmatched"] = result.get("unmatched", 0)
-                _library_sync_progress["error"] = result.get("error")
-        finally:
-            _library_sync_progress["running"] = False
-
-    background_tasks.add_task(_job)
     return RedirectResponse(
         "/server-folders?flash=Synchronisation+des+dossiers+lancée+en+arrière-plan...", status_code=303
     )
@@ -659,3 +584,64 @@ def server_folders_sync(background_tasks: BackgroundTasks):
 @router.get("/partials/server-folders-sync-progress", response_class=HTMLResponse)
 def server_folders_sync_progress_partial(request: Request):
     return templates.TemplateResponse(request, "_server_folders_progress.html", {"progress": _library_sync_progress})
+
+
+def _jobs_rows(session: Session) -> list[dict]:
+    rows = []
+    for job in jobs.JOBS.values():
+        record = session.get(ScheduledJob, job.id)
+        minutes = jobs.interval_minutes(job.id, session)
+        choices = list(jobs.INTERVAL_CHOICES)
+        if all(value != minutes for value, _ in choices):
+            choices.insert(0, (minutes, jobs.interval_label(minutes)))
+        rows.append(
+            {
+                "job": job,
+                "progress": job.state,
+                "available": job.is_available(),
+                "interval_minutes": minutes,
+                "is_default_interval": record is None or record.interval_minutes is None,
+                "default_interval_label": jobs.interval_label(job.default_interval_minutes()),
+                "choices": choices,
+                "record": record,
+                "next_run": scheduler.next_run_time(job.id),
+            }
+        )
+    return rows
+
+
+@router.get("/jobs", response_class=HTMLResponse)
+def jobs_page(request: Request, session: Session = Depends(get_session)):
+    return templates.TemplateResponse(
+        request,
+        "jobs.html",
+        {
+            "rows": _jobs_rows(session),
+            "scheduler_running": scheduler.is_running(),
+            "flash": request.query_params.get("flash"),
+        },
+    )
+
+
+@router.get("/partials/jobs-table", response_class=HTMLResponse)
+def jobs_table_partial(request: Request, session: Session = Depends(get_session)):
+    return templates.TemplateResponse(request, "_jobs_table.html", {"rows": _jobs_rows(session)})
+
+
+@router.post("/jobs/{job_id}/run")
+def jobs_run(job_id: str):
+    job = jobs.get(job_id)
+    if job is None:
+        return RedirectResponse("/jobs?flash=Tâche+inconnue", status_code=303)
+    if not jobs.start_in_background(job_id):
+        return RedirectResponse("/jobs?flash=Cette+tâche+est+déjà+en+cours...", status_code=303)
+    return RedirectResponse("/jobs?flash=Tâche+lancée+en+arrière-plan...", status_code=303)
+
+
+@router.post("/jobs/{job_id}/interval")
+def jobs_set_interval(job_id: str, minutes: int = Form(...), session: Session = Depends(get_session)):
+    if jobs.get(job_id) is None:
+        return RedirectResponse("/jobs?flash=Tâche+inconnue", status_code=303)
+    jobs.set_interval(session, job_id, minutes)
+    scheduler.reschedule(job_id)
+    return RedirectResponse("/jobs?flash=Fréquence+mise+à+jour", status_code=303)
