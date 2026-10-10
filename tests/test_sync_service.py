@@ -1433,3 +1433,24 @@ def test_cover_download_failure_is_shown_in_the_komga_box(monkeypatch):
     manga = session.exec(select(Manga)).one()
     assert manga.komga_sync_error.startswith("Couverture : téléchargement impossible")
     assert manga.komga_cover_pushed_url is None
+
+
+def test_komga_sync_does_not_resend_tags_komga_stored_lowercased(monkeypatch):
+    # Komga lowercases tags; the old case-sensitive comparison re-sent the
+    # Suwayomi tags of every series on every run ("419 enrichi(s)" each hour).
+    session = _session()
+    manga = Manga(category=Category.manga, title_en="Lowercased", server_folder="Lowercased")
+    manga.suwayomi_categories = ["Terminé"]
+    session.add(manga)
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(
+        id="series-40", library_id="lib-manga", name="Lowercased", tags=["0-suwayomi: terminé", "romance"]
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    result = sync_komga_library(session)
+
+    assert updates == []
+    assert result["pushed"] == 0
