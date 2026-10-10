@@ -6,6 +6,7 @@ single code path (and a single place throttling/logging happens).
 """
 
 import logging
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -394,6 +395,17 @@ def _send_komga_patch(
     return sent
 
 
+def _same_tags(ours: list[str], komga_tags: list[str]) -> bool:
+    """Komga stores tags lowercased (its web UI only title-cases them for
+    display), so "0-Suwayomi: Terminé" comes back as "0-suwayomi: terminé"
+    -- a case-sensitive comparison made every sync re-send the tags of every
+    series with a Suwayomi category, forever."""
+    def norm(tags: list[str]) -> set[str]:
+        return {unicodedata.normalize("NFC", t).strip().casefold() for t in tags}
+
+    return norm(ours) == norm(komga_tags)
+
+
 _KOMGA_FIELD_LABELS = {
     "summary": "résumé",
     "genres": "genres",
@@ -444,7 +456,7 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
         other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
         suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
         new_tags = other_tags + suwayomi_tags
-        if sorted(new_tags) != sorted(series.tags):
+        if not _same_tags(new_tags, series.tags):
             patch["tags"] = new_tags
 
     pushed = _send_komga_patch(manga, series.id, patch, _KOMGA_FIELD_LABELS, client)
@@ -580,7 +592,7 @@ def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries
         other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
         suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
         new_tags = other_tags + suwayomi_tags
-        if sorted(new_tags) != sorted(series.tags):
+        if not _same_tags(new_tags, series.tags):
             patch["tags"] = new_tags
 
     sent = _send_komga_patch(manga, series.id, patch, _KOMGA_FIELD_LABELS, client)
