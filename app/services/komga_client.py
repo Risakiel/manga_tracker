@@ -8,6 +8,7 @@ against a real Komga instance during implementation, including a real
 write-then-revert round trip on the metadata endpoint.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,6 +44,34 @@ def is_suwayomi_tag(tag: str) -> bool:
     return any(lowered.startswith(p.casefold()) for p in (SUWAYOMI_TAG_PREFIX, *_LEGACY_SUWAYOMI_TAG_PREFIXES))
 
 
+def is_mangaupdates_link(link: dict) -> bool:
+    """A Komga series link pointing to MangaUpdates, whatever its label --
+    komf or a manual edit may have used "Manga Updates", "MU", ... instead
+    of our exact "MangaUpdates" label, and those must still count as "Komga
+    already has a MangaUpdates link" (and be replaced, not duplicated)."""
+    label = (link.get("label") or "").strip().lower()
+    url = (link.get("url") or "").lower()
+    return label == MANGAUPDATES_LINK_LABEL.lower() or "mangaupdates.com" in url
+
+
+# Komga series IDs are short uppercase alphanumeric strings (e.g.
+# "0RHPX6TK8B7H9"), shown in the web UI URL as /series/<id>.
+_SERIES_ID_RE = re.compile(r"^[0-9A-Za-z]{6,32}$")
+_SERIES_URL_RE = re.compile(r"/series/([0-9A-Za-z]+)")
+
+
+def parse_series_id(value: str) -> Optional[str]:
+    """Accepts either a bare Komga series ID or any Komga URL containing
+    /series/<id> (web UI or API) and returns the ID, or None if neither."""
+    value = (value or "").strip()
+    match = _SERIES_URL_RE.search(value)
+    if match:
+        return match.group(1)
+    if _SERIES_ID_RE.match(value):
+        return value
+    return None
+
+
 class KomgaUnavailable(Exception):
     def __init__(self, reason: str):
         self.reason = reason
@@ -54,6 +83,9 @@ class KomgaSeries:
     id: str
     library_id: str
     name: str
+    # Folder path of the series on Komga's side (its "url" field), e.g.
+    # "/data/Manga/A Fantasy Lazy Life".
+    url: str = ""
     books_count: int = 0
     books_read_count: int = 0
     summary: str = ""
@@ -129,6 +161,21 @@ def list_library_ids(client: Optional[httpx.Client] = None) -> dict[Category, st
             client.close()
 
 
+def fetch_library_name(library_id: str, client: Optional[httpx.Client] = None) -> str:
+    """Display name of a Komga library (falls back to its ID on error) --
+    only needed for a series found outside the Manga/Pornhwa libraries,
+    e.g. one whose ID was pinned by hand."""
+    owns_client = client is None
+    client = client or _client()
+    try:
+        return _get(client, f"/api/v1/libraries/{library_id}").get("name") or library_id
+    except httpx.HTTPError:
+        return library_id
+    finally:
+        if owns_client:
+            client.close()
+
+
 def trigger_library_scan(library_id: str, client: Optional[httpx.Client] = None) -> None:
     """Kicks off an async Komga library scan so files a Suwayomi download
     just finished writing get indexed without waiting on Komga's own
@@ -152,13 +199,14 @@ def _parse_series(node: dict) -> KomgaSeries:
     metadata = node.get("metadata") or {}
     mu_url = None
     for link in metadata.get("links") or []:
-        if (link.get("label") or "").strip().lower() == MANGAUPDATES_LINK_LABEL.lower():
+        if is_mangaupdates_link(link):
             mu_url = link.get("url")
             break
     return KomgaSeries(
         id=node["id"],
         library_id=node["libraryId"],
         name=node["name"],
+        url=node.get("url") or "",
         books_count=node.get("booksCount") or 0,
         books_read_count=node.get("booksReadCount") or 0,
         summary=metadata.get("summary") or "",

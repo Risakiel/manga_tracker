@@ -116,3 +116,17 @@ def test_is_suwayomi_tag_recognizes_current_and_legacy_prefix():
     assert komga_client.is_suwayomi_tag("0-suwayomi: terminé")  # Komga lowercases stored tags
     assert komga_client.is_suwayomi_tag("Suwayomi: Terminé")  # legacy, pre sort-order fix
     assert not komga_client.is_suwayomi_tag("My Own Tag")
+
+
+def test_parse_series_id_accepts_bare_id_and_urls():
+    assert komga_client.parse_series_id("0RHPX6TK8B7H9") == "0RHPX6TK8B7H9"
+    assert komga_client.parse_series_id("http://192.168.1.90:25600/series/0RHPX6TK8B7H9") == "0RHPX6TK8B7H9"
+    assert komga_client.parse_series_id(" http://komga/series/0RHPX6TK8B7H9?tab=books ") == "0RHPX6TK8B7H9"
+    assert komga_client.parse_series_id("not an id!") is None
+    assert komga_client.parse_series_id("") is None
+
+
+def test_mangaupdates_link_detected_whatever_its_label():
+    assert komga_client.is_mangaupdates_link({"label": "MangaUpdates", "url": "https://x"})
+    assert komga_client.is_mangaupdates_link({"label": "Manga Updates", "url": "https://www.mangaupdates.com/series/abc"})
+    assert not komga_client.is_mangaupdates_link({"label": "AniList", "url": "https://anilist.co/manga/1"})

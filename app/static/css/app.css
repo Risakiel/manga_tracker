@@ -834,7 +834,8 @@ body {
     border-right: 1px solid var(--surface-border-color);
 }
 
-.komga-link-bar input[type="url"] {
+.komga-link-bar input[type="url"],
+.komga-link-bar input[type="text"] {
     flex: 1;
     min-width: 0;
     background: transparent;
@@ -1036,5 +1037,83 @@ body {
 
     .detail-toolbar-actions .btn-sync {
         flex: 1;
+    }
+}
+
+/* "Komga" box on the detail page (below Description). */
+.komga-info {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.35rem 1rem;
+    margin: 0.5rem 0 1rem;
+    font-size: 0.9rem;
+}
+
+.komga-info dt {
+    color: var(--muted-text-color);
+    font-weight: 600;
+}
+
+.komga-info dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.komga-info dd a {
+    margin-left: 0.4rem;
+}
+
+.komga-info dd > a:first-child {
+    margin-left: 0;
+}
+
+.komga-ok {
+    color: #4ade80;
+    font-weight: 700;
+}
+
+.komga-warn {
+    color: #fbbf24;
+    font-weight: 700;
+}
+
+.komga-muted {
+    color: var(--muted-text-color);
+}
+
+.komga-pill {
+    margin-left: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--muted-text-color);
+}
+
+.komga-box-error {
+    color: #f87171;
+    font-size: 0.9rem;
+}
+
+.komga-box-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.komga-box-actions .komga-link-bar {
+    flex: 1 1 22rem;
+    margin: 0;
+}
+
+.komga-box-actions form {
+    margin: 0;
+}
+
+@media (max-width: 640px) {
+    .komga-info {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .komga-info dt {
+        margin-top: 0.4rem;
     }
 }

@@ -224,3 +224,150 @@ def test_identify_confirm_route_rejects_unknown_source(client):
     resp = client.post(f"/manga/{manga_id}/identify/confirm", data={"candidate": "unknown:1"})
 
     assert resp.status_code == 400
+
+
+def _fake_komga(monkeypatch, updates):
+    from app.config import settings
+    from app.services import komga_client
+
+    monkeypatch.setattr(settings, "komga_url", "http://komga.local")
+
+    def _fetch(series_id, client=None):
+        if series_id != "0RHPX6TK8B7H9":
+            raise komga_client.KomgaUnavailable("404 Not Found")
+        return komga_client.KomgaSeries(
+            id=series_id,
+            library_id="lib-manga",
+            name="A Fantasy Lazy Life",
+            url="/data/Manga/A Fantasy Lazy Life",
+            books_count=17,
+            mangaupdates_url="https://www.mangaupdates.com/series/aaaaaaa/old",
+            raw_links=[{"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/aaaaaaa/old"}],
+        )
+
+    monkeypatch.setattr(komga_client, "fetch_series_by_id", _fetch)
+    monkeypatch.setattr(komga_client, "fetch_library_name", lambda library_id, client=None: "Manga")
+    monkeypatch.setattr(
+        komga_client, "update_metadata", lambda series_id, patch, client=None: updates.append((series_id, patch))
+    )
+
+
+def test_pinning_a_komga_series_from_the_detail_page(client, monkeypatch):
+    updates = []
+    _fake_komga(monkeypatch, updates)
+    with Session(engine) as session:
+        manga = Manga(
+            category=Category.manga,
+            title_en="A Fantasy Lazy Life",
+            server_folder="A Fantasy Lazy Life",
+            mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/a-fantasy-lazy-life",
+        )
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    resp = client.post(
+        f"/manga/{manga_id}/komga-series",
+        data={"komga_series": "http://192.168.1.90:25600/series/0RHPX6TK8B7H9"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    with Session(engine) as session:
+        manga = session.get(Manga, manga_id)
+        assert manga.komga_series_id == "0RHPX6TK8B7H9"
+        assert manga.komga_id_pinned is True
+        assert manga.komga_match_method == "manuel"
+        assert manga.komga_folder_path == "/data/Manga/A Fantasy Lazy Life"
+        # The stale MangaUpdates link on the Komga side got replaced by ours.
+        assert manga.komga_mangaupdates_url == "https://www.mangaupdates.com/series/kljw00c/a-fantasy-lazy-life"
+    assert updates[-1][1]["links"] == [
+        {"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/kljw00c/a-fantasy-lazy-life"}
+    ]
+
+    page = client.get(f"/manga/{manga_id}")
+    assert 'id="komga"' in page.text
+    assert "0RHPX6TK8B7H9" in page.text
+    assert "http://komga.local/series/0RHPX6TK8B7H9" in page.text
+    assert "/data/Manga/A Fantasy Lazy Life" in page.text
+    assert "identique des deux côtés" in page.text
+
+
+def test_pinning_an_unknown_komga_series_keeps_the_current_link(client, monkeypatch):
+    _fake_komga(monkeypatch, [])
+    with Session(engine) as session:
+        manga = Manga(category=Category.manga, title_en="Keep Link", server_folder="Keep Link", komga_series_id="GOODID1234")
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    client.post(f"/manga/{manga_id}/komga-series", data={"komga_series": "BADID12345"}, follow_redirects=False)
+
+    with Session(engine) as session:
+        manga = session.get(Manga, manga_id)
+        assert manga.komga_series_id == "GOODID1234"
+        assert "BADID12345 introuvable" in manga.komga_sync_error
+
+
+def test_unlinking_a_komga_series(client, monkeypatch):
+    _fake_komga(monkeypatch, [])
+    with Session(engine) as session:
+        manga = Manga(
+            category=Category.manga, title_en="Unlink", server_folder="Unlink", komga_series_id="0RHPX6TK8B7H9",
+            komga_id_pinned=True,
+        )
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    client.post(f"/manga/{manga_id}/komga-series", data={"komga_series": ""}, follow_redirects=False)
+
+    with Session(engine) as session:
+        manga = session.get(Manga, manga_id)
+        assert manga.komga_series_id is None
+        assert manga.komga_id_pinned is None
+
+
+@respx.mock
+def test_editing_mangaupdates_url_pushes_it_to_komga_right_away(client, monkeypatch):
+    updates = []
+    _fake_komga(monkeypatch, updates)
+    with Session(engine) as session:
+        manga = Manga(
+            category=Category.manga,
+            title_en="Push Link",
+            server_folder="Push Link",
+            mangaupdates_url="https://www.mangaupdates.com/series/aaaaaaa/old",
+            komga_series_id="0RHPX6TK8B7H9",
+        )
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "series_id": 44838842124,
+                "title": "Push Link",
+                "url": "https://www.mangaupdates.com/series/kljw00c/push-link",
+                "status": "10 Chapters (Ongoing)",
+                "completed": False,
+                "latest_chapter": 10,
+                "authors": [],
+                "genres": [],
+                "associated": [],
+            },
+        )
+    )
+    respx.post("https://graphql.anilist.co").mock(return_value=httpx.Response(200, json={"data": {"Media": None}}))
+
+    client.post(
+        f"/manga/{manga_id}/mangaupdates-url",
+        data={"mangaupdates_url": "https://www.mangaupdates.com/series/kljw00c/push-link"},
+        follow_redirects=False,
+    )
+
+    assert updates and updates[-1][1]["links"] == [
+        {"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/kljw00c/push-link"}
+    ]

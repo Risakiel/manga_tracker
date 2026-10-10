@@ -1059,3 +1059,254 @@ def test_apply_identify_pushes_cover_and_authors_to_komga(monkeypatch):
             {"authors": [{"name": "Some Author", "role": "writer"}, {"name": "Some Artist", "role": "penciller"}]},
         )
     ]
+
+
+def test_komga_sync_stores_komga_side_identification(monkeypatch):
+    session = _session()
+    session.add(Manga(category=Category.manga, title_en="A Fantasy Lazy Life", server_folder="A Fantasy Lazy Life"))
+    session.commit()
+
+    series = komga_client.KomgaSeries(
+        id="0RHPX6TK8B7H9",
+        library_id="lib-manga",
+        name="A Fantasy Lazy Life",
+        url="/data/Manga/A Fantasy Lazy Life",
+        books_count=17,
+        mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/a-fantasy-lazy-life",
+        links_locked=True,
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=[])
+
+    sync_komga_library(session)
+
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_series_id == "0RHPX6TK8B7H9"
+    assert manga.komga_series_name == "A Fantasy Lazy Life"
+    assert manga.komga_library_name == "Manga"
+    assert manga.komga_folder_path == "/data/Manga/A Fantasy Lazy Life"
+    assert manga.komga_mangaupdates_url == "https://www.mangaupdates.com/series/kljw00c/a-fantasy-lazy-life"
+    assert manga.komga_links_locked is True
+    assert manga.komga_match_method == "dossier"
+    assert manga.komga_synced_at is not None
+
+
+def test_komga_sync_replaces_a_different_mangaupdates_link(monkeypatch):
+    # The original bug: the routine sync only ever added a MangaUpdates link
+    # when Komga had none, so a link corrected here (or a wrong one set by
+    # komf) never reached Komga.
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Linked Title",
+            server_folder="Linked Title",
+            mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/correct",
+            komga_series_id="series-20",
+        )
+    )
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(
+        id="series-20",
+        library_id="lib-manga",
+        name="Linked Title",
+        mangaupdates_url="https://www.mangaupdates.com/series/aaaaaaa/wrong",
+        raw_links=[
+            {"label": "Manga Updates", "url": "https://www.mangaupdates.com/series/aaaaaaa/wrong"},
+            {"label": "Other", "url": "https://example.com"},
+        ],
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    sync_komga_library(session)
+
+    assert len(updates) == 1
+    assert updates[0][1]["links"] == [
+        {"label": "Other", "url": "https://example.com"},
+        {"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/kljw00c/correct"},
+    ]
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_mangaupdates_url == "https://www.mangaupdates.com/series/kljw00c/correct"
+    assert manga.komga_mangaupdates_status == "same"
+
+
+def test_komga_sync_leaves_an_equivalent_mangaupdates_link_alone(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Same Link",
+            server_folder="Same Link",
+            mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/same-link",
+        )
+    )
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(
+        id="series-21",
+        library_id="lib-manga",
+        name="Same Link",
+        mangaupdates_url="https://www.mangaupdates.com/series/kljw00c",
+        raw_links=[{"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/kljw00c"}],
+    )
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    sync_komga_library(session)
+
+    assert updates == []
+
+
+def test_komga_sync_respects_a_locked_links_field(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Locked Links",
+            server_folder="Locked Links",
+            mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/locked",
+        )
+    )
+    session.commit()
+
+    updates = []
+    series = komga_client.KomgaSeries(id="series-22", library_id="lib-manga", name="Locked Links", links_locked=True)
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=updates)
+
+    sync_komga_library(session)
+
+    assert updates == []
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_links_locked is True
+    assert manga.komga_mangaupdates_status == "missing_komga"
+
+
+def test_komga_sync_retries_field_by_field_when_komga_rejects_the_patch(monkeypatch):
+    session = _session()
+    manga = Manga(
+        category=Category.manga,
+        title_en="Rejected",
+        server_folder="Rejected",
+        mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/rejected",
+        description="desc",
+    )
+    session.add(manga)
+    session.commit()
+
+    sent = []
+
+    def _update(series_id, patch, client=None):
+        if "summary" in patch:
+            raise komga_client.KomgaUnavailable("400 Bad Request")
+        sent.append(patch)
+
+    series = komga_client.KomgaSeries(id="series-23", library_id="lib-manga", name="Rejected")
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]})
+    monkeypatch.setattr(komga_client, "update_metadata", _update)
+
+    result = sync_komga_library(session)
+
+    assert result["pushed"] == 1
+    assert sent == [{"links": [{"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/kljw00c/rejected"}]}]
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_sync_error == "Komga a refusé : résumé"
+    assert manga.komga_mangaupdates_url == "https://www.mangaupdates.com/series/kljw00c/rejected"
+
+
+def test_komga_sync_prefers_the_stored_series_id(monkeypatch):
+    # Two Komga series with near-identical names: without the stored ID,
+    # fuzzy matching could pair the manga with either one.
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Lazy Life",
+            server_folder="Lazy Life",
+            komga_series_id="series-right",
+        )
+    )
+    session.commit()
+
+    wrong = komga_client.KomgaSeries(id="series-wrong", library_id="lib-manga", name="Lazy Life", books_count=1)
+    right = komga_client.KomgaSeries(id="series-right", library_id="lib-manga", name="Lazy Life (Light Novel)", books_count=9)
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [wrong, right]}, updates=[])
+
+    result = sync_komga_library(session)
+
+    assert result["matched"] == 1
+    assert result["unmatched"] == 1
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_series_id == "series-right"
+    assert manga.komga_books_count == 9
+    assert manga.komga_match_method == "id"
+
+
+def test_komga_sync_looks_up_a_pinned_series_outside_the_listed_libraries(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Pinned",
+            server_folder="Pinned",
+            komga_series_id="series-elsewhere",
+            komga_id_pinned=True,
+            komga_match_method="manuel",
+        )
+    )
+    session.commit()
+
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": []}, updates=[])
+    monkeypatch.setattr(
+        komga_client,
+        "fetch_series_by_id",
+        lambda series_id, client=None: komga_client.KomgaSeries(
+            id=series_id, library_id="lib-other", name="Pinned", books_count=4
+        ),
+    )
+    monkeypatch.setattr(komga_client, "fetch_library_name", lambda library_id, client=None: "Hentai")
+
+    result = sync_komga_library(session)
+
+    assert result["matched"] == 1
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_series_id == "series-elsewhere"
+    assert manga.komga_library_name == "Hentai"
+    assert manga.komga_books_count == 4
+    assert manga.komga_match_method == "manuel"
+
+
+def test_komga_sync_rematches_an_unpinned_manga_whose_series_vanished(monkeypatch):
+    # Komga re-creates a series under a new ID when its folder is re-added.
+    session = _session()
+    session.add(Manga(category=Category.manga, title_en="Moved", server_folder="Moved", komga_series_id="old-id"))
+    session.commit()
+
+    def _missing(series_id, client=None):
+        raise komga_client.KomgaUnavailable("404 Not Found")
+
+    series = komga_client.KomgaSeries(id="new-id", library_id="lib-manga", name="Moved")
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=[])
+    monkeypatch.setattr(komga_client, "fetch_series_by_id", _missing)
+
+    sync_komga_library(session)
+
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_series_id == "new-id"
+    assert manga.komga_sync_error is None
+
+
+def test_komga_sync_never_links_two_series_to_the_same_manga(monkeypatch):
+    session = _session()
+    session.add(Manga(category=Category.manga, title_en="Twin", server_folder="Twin"))
+    session.commit()
+
+    first = komga_client.KomgaSeries(id="series-a", library_id="lib-manga", name="Twin")
+    second = komga_client.KomgaSeries(id="series-b", library_id="lib-manga", name="Twin!")
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [first, second]}, updates=[])
+
+    result = sync_komga_library(session)
+
+    assert result["matched"] == 1
+    assert result["unmatched"] == 1
+    assert session.exec(select(Manga)).one().komga_series_id == "series-a"

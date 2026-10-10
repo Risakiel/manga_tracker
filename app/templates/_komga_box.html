@@ -1,0 +1,78 @@
+{# "Komga" box on the detail page: everything needed to check that this
+   manga is linked to the right Komga series, and that both apps agree on
+   its MangaUpdates link. #}
+{% set mu_status = manga.komga_mangaupdates_status %}
+{% set method_labels = {"id": "ID Komga mémorisé", "manuel": "ID saisi à la main", "mangaupdates": "lien MangaUpdates commun", "dossier": "nom de dossier", "titre": "titre approchant"} %}
+<article id="komga" class="komga-box">
+    <div class="stat-tile-label">Komga</div>
+
+    {% if manga.komga_sync_error %}
+    <p class="komga-box-error">⚠️ {{ manga.komga_sync_error }}</p>
+    {% endif %}
+
+    {% if manga.komga_series_id %}
+    <dl class="komga-info">
+        <dt>ID Komga</dt>
+        <dd>
+            <code>{{ manga.komga_series_id }}</code>
+            {% if komga_web_url %}<a href="{{ komga_web_url }}" target="_blank" rel="noopener">Ouvrir dans Komga ↗</a>{% endif %}
+            {% if manga.komga_id_pinned %}<span class="komga-pill" title="Saisi à la main : la synchro automatique ne le remplacera jamais">📌 épinglé</span>{% endif %}
+        </dd>
+
+        <dt>Titre dans Komga</dt>
+        <dd>{{ manga.komga_series_name or "?" }}</dd>
+
+        <dt>Bibliothèque</dt>
+        <dd>{{ manga.komga_library_name or "?" }}</dd>
+
+        <dt>Dossier</dt>
+        <dd>{% if manga.komga_folder_path %}<code>{{ manga.komga_folder_path }}</code>{% else %}?{% endif %}</dd>
+
+        <dt>Correspondance</dt>
+        <dd>{{ method_labels.get(manga.komga_match_method, "?") }}</dd>
+
+        <dt>Lecture</dt>
+        <dd>{{ manga.komga_books_read_count if manga.komga_books_read_count is not none else "?" }} / {{ manga.komga_books_count if manga.komga_books_count is not none else "?" }} tome(s) lu(s)</dd>
+
+        <dt>MangaUpdates (Komga)</dt>
+        <dd>
+            {% if manga.komga_mangaupdates_url %}<a href="{{ manga.komga_mangaupdates_url }}" target="_blank" rel="noopener">{{ manga.komga_mangaupdates_url }}</a>{% else %}<span class="komga-muted">aucun lien</span>{% endif %}
+        </dd>
+
+        <dt>MangaUpdates (ici)</dt>
+        <dd>
+            {% if manga.mangaupdates_url %}<a href="{{ manga.mangaupdates_url }}" target="_blank" rel="noopener">{{ manga.mangaupdates_url }}</a>{% else %}<span class="komga-muted">aucun lien</span>{% endif %}
+        </dd>
+
+        <dt>Lien MangaUpdates</dt>
+        <dd>
+            {% if mu_status == "same" %}<span class="komga-ok">✓ identique des deux côtés</span>
+            {% elif mu_status == "different" %}<span class="komga-warn">✗ différent</span>
+            {% elif mu_status == "missing_komga" %}<span class="komga-warn">✗ absent de Komga</span>
+            {% elif mu_status == "missing_ours" %}<span class="komga-muted">pas de lien MangaUpdates ici</span>
+            {% else %}<span class="komga-muted">pas encore vérifié</span>{% endif %}
+            {% if manga.komga_links_locked and mu_status in ("different", "missing_komga") %}
+            <small class="komga-muted">— champ "Liens" verrouillé dans Komga : déverrouille-le pour que la synchro puisse le corriger.</small>
+            {% endif %}
+        </dd>
+
+        <dt>Dernière synchro Komga</dt>
+        <dd>{{ manga.komga_synced_at.strftime("%Y-%m-%d %H:%M") if manga.komga_synced_at else "jamais" }}</dd>
+    </dl>
+    {% else %}
+    <p class="komga-muted">Pas encore lié à une série Komga. Lance une synchro Komga, ou colle ci-dessous l'ID / le lien de la série.</p>
+    {% endif %}
+
+    <div class="komga-box-actions">
+        <form method="post" action="/manga/{{ manga.id }}/komga-series" class="komga-link-bar">
+            <span class="komga-link-label">ID Komga</span>
+            <input type="text" name="komga_series" value="{{ manga.komga_series_id or '' }}" placeholder="ID ou lien de la série Komga (vide = délier)">
+            <button type="submit" class="komga-link-icon-btn" title="Enregistrer (vérifié dans Komga)">✓</button>
+        </form>
+        {% if manga.komga_series_id %}
+        <form method="post" action="/manga/{{ manga.id }}/komga-sync">
+            <button type="submit" class="btn-sync">{% include "_sync_icon.html" %}<span>Synchroniser avec Komga</span></button>
+        </form>
+        {% endif %}
+    </div>
+</article>

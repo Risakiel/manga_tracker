@@ -348,16 +348,72 @@ def sync_server_folders(
     return {"checked": checked, "matched": matched, "unmatched": unmatched}
 
 
-def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> bool:
+def _links_with_our_mangaupdates_url(manga: Manga, series: "komga_client.KomgaSeries") -> list[dict]:
+    """The series' links with every MangaUpdates one (whatever its label)
+    replaced by ours -- other links (user- or komf-added) are kept as-is."""
+    other_links = [link for link in series.raw_links if not komga_client.is_mangaupdates_link(link)]
+    return other_links + [{"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}]
+
+
+def _send_komga_patch(
+    manga: Manga, series_id: str, patch: dict, labels: dict[str, str], client: httpx.Client
+) -> list[str]:
+    """Sends `patch` in one call; if Komga rejects it, retries field by
+    field so one bad field (Komga 400s the *whole* patch on a single
+    invalid value) can't silently keep the others -- the MangaUpdates link
+    in particular -- from ever reaching Komga. Failures are recorded on
+    `manga.komga_sync_error` for the detail page instead of only a log
+    line. Returns the human-readable labels of the fields actually sent."""
+    if not patch:
+        return []
+    try:
+        komga_client.update_metadata(series_id, patch, client=client)
+        return [labels[k] for k in patch]
+    except komga_client.KomgaUnavailable as exc:
+        if len(patch) == 1:
+            manga.komga_sync_error = f"Échec de l'envoi vers Komga ({labels[next(iter(patch))]}) : {exc.reason}"
+            return []
+    sent: list[str] = []
+    failed: list[str] = []
+    for key, value in patch.items():
+        try:
+            komga_client.update_metadata(series_id, {key: value}, client=client)
+            sent.append(labels[key])
+        except komga_client.KomgaUnavailable as exc:
+            logger.warning("Komga rejected %s for series %s: %s", key, series_id, exc)
+            failed.append(labels[key])
+    if failed:
+        manga.komga_sync_error = f"Komga a refusé : {', '.join(failed)}"
+    return sent
+
+
+_KOMGA_FIELD_LABELS = {
+    "summary": "résumé",
+    "genres": "genres",
+    "alternateTitles": "titres alternatifs",
+    "links": "lien MangaUpdates",
+    "tags": "tags",
+}
+
+
+def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> list[str]:
     """Non-destructive enrichment: only fills Komga fields that are genuinely
     empty and unlocked there -- never overwrites anything already set,
     whether by the user or another tool (e.g. komf).
 
-    Tags are the one exception: Suwayomi categories are a live status (e.g.
-    "Terminé" / "scans manquants"), not static bio info, so the
-    "Suwayomi: <category>" tags are actively kept in sync with Suwayomi's
-    current assignment on every run -- replacing only that subset so any
-    other tag (user- or tool-added) survives untouched.
+    Two exceptions:
+    - Tags: Suwayomi categories are a live status (e.g. "Terminé" / "scans
+      manquants"), not static bio info, so the "0-Suwayomi: <category>"
+      tags are actively kept in sync with Suwayomi's current assignment on
+      every run -- replacing only that subset so any other tag (user- or
+      tool-added) survives untouched.
+    - The MangaUpdates link: it is the identity anchor between the two
+      apps, so a Komga link pointing to a *different* MangaUpdates series
+      than ours (stale, set by komf before a correction here, ...) is
+      replaced instead of being kept forever. Only the MangaUpdates link is
+      touched; other links stay. A lock set in Komga is still respected.
+
+    Returns the labels of the fields actually sent (empty if nothing to do).
     """
     patch: dict = {}
     if manga.description and not series.summary and not series.summary_locked:
@@ -371,10 +427,12 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
         patch["alternateTitles"] = [
             {"label": komga_client.MANGAUPDATES_LINK_LABEL, "title": t} for t in manga.alt_titles
         ]
-    if manga.mangaupdates_url and not series.mangaupdates_url and not series.links_locked:
-        patch["links"] = series.raw_links + [
-            {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
-        ]
+    if (
+        manga.mangaupdates_url
+        and not series.links_locked
+        and not mangaupdates_client.same_series_url(manga.mangaupdates_url, series.mangaupdates_url)
+    ):
+        patch["links"] = _links_with_our_mangaupdates_url(manga, series)
     if not series.tags_locked:
         other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
         suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
@@ -382,13 +440,87 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
         if sorted(new_tags) != sorted(series.tags):
             patch["tags"] = new_tags
 
-    if not patch:
-        return False
+    pushed = _send_komga_patch(manga, series.id, patch, _KOMGA_FIELD_LABELS, client)
+    if _KOMGA_FIELD_LABELS["links"] in pushed:
+        manga.komga_mangaupdates_url = manga.mangaupdates_url
+    return pushed
+
+
+def _apply_komga_series(
+    manga: Manga, series: "komga_client.KomgaSeries", library_name: Optional[str], method: str
+) -> None:
+    """Stores what Komga says about the linked series on the manga row."""
+    now = datetime.now(timezone.utc)
+    manga.komga_series_id = series.id
+    manga.komga_books_count = series.books_count
+    manga.komga_books_read_count = series.books_read_count
+    manga.komga_series_name = series.name
+    manga.komga_library_name = library_name
+    manga.komga_folder_path = series.url or None
+    manga.komga_mangaupdates_url = series.mangaupdates_url
+    manga.komga_links_locked = series.links_locked
+    manga.komga_match_method = method
+    manga.komga_synced_at = now
+    manga.komga_sync_error = None
+    manga.updated_at = now
+
+
+def sync_manga_with_komga(
+    session: Session, manga: Manga, client: Optional[httpx.Client] = None, method: Optional[str] = None
+) -> list[str]:
+    """Refreshes one manga from its stored Komga series ID and pushes the
+    routine (non-destructive) metadata to it -- used by the detail page's
+    "Komga" box, and right after the MangaUpdates link changes here so the
+    correction reaches Komga immediately instead of on the next full sync.
+    Errors are stored on `manga.komga_sync_error`, never raised."""
+    if not manga.komga_series_id:
+        return []
+    owns_client = client is None
+    client = client or komga_client.open_client()
+    pushed: list[str] = []
     try:
-        komga_client.update_metadata(series.id, patch, client=client)
-        return True
-    except komga_client.KomgaUnavailable:
-        return False
+        series = komga_client.fetch_series_by_id(manga.komga_series_id, client=client)
+        library_name = komga_client.fetch_library_name(series.library_id, client=client)
+        _apply_komga_series(manga, series, library_name, method or manga.komga_match_method or "id")
+        pushed = _push_metadata_to_komga(manga, series, client=client)
+    except komga_client.KomgaUnavailable as exc:
+        manga.komga_sync_error = f"Série Komga {manga.komga_series_id} inaccessible : {exc.reason}"
+    finally:
+        if owns_client:
+            client.close()
+    session.add(manga)
+    session.commit()
+    return pushed
+
+
+def link_manga_to_komga_series(session: Session, manga: Manga, raw_value: str) -> Optional[str]:
+    """Pins a manga to a Komga series entered by hand (bare ID or any Komga
+    URL), or unlinks it when `raw_value` is blank. Returns an error message
+    for the UI, or None on success. The series is checked to exist before
+    anything is saved, so a typo can't break an existing correct link."""
+    if not raw_value.strip():
+        for attr in (
+            "komga_series_id", "komga_books_count", "komga_books_read_count", "komga_series_name",
+            "komga_library_name", "komga_folder_path", "komga_mangaupdates_url", "komga_links_locked",
+            "komga_match_method", "komga_synced_at", "komga_sync_error",
+        ):
+            setattr(manga, attr, None)
+        manga.komga_id_pinned = None
+        session.add(manga)
+        session.commit()
+        return None
+    series_id = komga_client.parse_series_id(raw_value)
+    if series_id is None:
+        return "ID ou lien Komga invalide"
+    try:
+        with komga_client.open_client() as client:
+            komga_client.fetch_series_by_id(series_id, client=client)
+            manga.komga_series_id = series_id
+            manga.komga_id_pinned = True
+            sync_manga_with_komga(session, manga, client=client, method="manuel")
+    except komga_client.KomgaUnavailable as exc:
+        return f"Série Komga {series_id} introuvable : {exc.reason}"
+    return None
 
 
 def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", client: httpx.Client) -> list[str]:
@@ -404,43 +536,27 @@ def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries
     locked, or nothing changed).
     """
     patch: dict = {}
-    pushed: list[str] = []
     if not series.summary_locked and manga.description:
         patch["summary"] = manga.description
-        pushed.append("résumé")
     if not series.genres_locked and manga.genres:
         patch["genres"] = manga.genres
-        pushed.append("genres")
     if not series.alternate_titles_locked and manga.alt_titles:
         patch["alternateTitles"] = [
             {"label": komga_client.MANGAUPDATES_LINK_LABEL, "title": t} for t in manga.alt_titles
         ]
-        pushed.append("titres alternatifs")
     if not series.links_locked and manga.mangaupdates_url:
-        other_links = [
-            link
-            for link in series.raw_links
-            if (link.get("label") or "").strip().lower() != komga_client.MANGAUPDATES_LINK_LABEL.lower()
-        ]
-        patch["links"] = other_links + [
-            {"label": komga_client.MANGAUPDATES_LINK_LABEL, "url": manga.mangaupdates_url}
-        ]
-        pushed.append("lien MangaUpdates")
+        patch["links"] = _links_with_our_mangaupdates_url(manga, series)
     if not series.tags_locked:
         other_tags = [t for t in series.tags if not komga_client.is_suwayomi_tag(t)]
         suwayomi_tags = [f"{komga_client.SUWAYOMI_TAG_PREFIX}{c}" for c in manga.suwayomi_categories]
         new_tags = other_tags + suwayomi_tags
         if sorted(new_tags) != sorted(series.tags):
             patch["tags"] = new_tags
-            pushed.append("tags")
 
-    if not patch:
-        return []
-    try:
-        komga_client.update_metadata(series.id, patch, client=client)
-        return pushed
-    except komga_client.KomgaUnavailable:
-        return []
+    sent = _send_komga_patch(manga, series.id, patch, _KOMGA_FIELD_LABELS, client)
+    if _KOMGA_FIELD_LABELS["links"] in sent:
+        manga.komga_mangaupdates_url = manga.mangaupdates_url
+    return sent
 
 
 def push_cover_to_komga(manga: Manga, series_id: str, client: httpx.Client) -> bool:
@@ -615,6 +731,7 @@ def apply_identify(session: Session, manga: Manga, source: str, external_id: str
     komga_pushed: list[str] = []
     komga_error = None
     if komga_linked:
+        manga.komga_sync_error = None
         try:
             with komga_client.open_client() as client:
                 series = komga_client.fetch_series_by_id(manga.komga_series_id, client=client)
@@ -626,6 +743,9 @@ def apply_identify(session: Session, manga: Manga, source: str, external_id: str
                     komga_pushed.append(f"auteur/artiste ({authors_updated} tome(s))")
         except komga_client.KomgaUnavailable as exc:
             komga_error = str(exc)
+        komga_error = komga_error or manga.komga_sync_error
+        session.add(manga)
+        session.commit()
 
     return IdentifyResult(
         source_label=IDENTIFY_SOURCE_LABELS[source],
@@ -640,19 +760,31 @@ def sync_komga_library(
     session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict:
     """Reconcile tracked mangas against Komga (the actual reading library):
-    pulls real read progress (booksReadCount vs booksCount), pushes back
-    MangaUpdates-sourced metadata Komga is missing (summary/genres/alt
-    titles/MangaUpdates link) -- only filling gaps, never overwriting -- and
-    mirrors each manga's Suwayomi categories onto Komga as "Suwayomi: <category>"
-    tags, filterable in Komga's own UI and any client reading the same API
-    (e.g. Komelia).
+    pulls real read progress (booksReadCount vs booksCount) plus what Komga
+    knows about each series (name, library, folder, MangaUpdates link) for
+    the detail page's "Komga" box, pushes back MangaUpdates-sourced metadata
+    Komga is missing (summary/genres/alt titles) -- only filling gaps, never
+    overwriting -- keeps Komga's MangaUpdates link aligned with ours, and
+    mirrors each manga's Suwayomi categories onto Komga as "0-Suwayomi:
+    <category>" tags, filterable in Komga's own UI and any client reading
+    the same API (e.g. Komelia).
 
-    Matching priority: MangaUpdates series_id (both sides usually already
-    link to it, and only trusted if the series still plausibly looks like
-    the same manga -- see the sanity check below) > exact folder-name match
-    within the same category > fuzzy title match. Komga series with no
-    match are only counted, not created -- Suwayomi (not Komga) is this
-    app's source of truth for which manga exist.
+    Matching priority:
+    1. the Komga series ID already stored on the manga (from a previous
+       sync, or pinned by hand on the detail page) -- the only fully
+       reliable link, since titles/folders/MangaUpdates links can all
+       drift; a stored ID whose series is missing from the Manga/Pornhwa
+       libraries is looked up directly, so a series pinned in another
+       library (or moved) isn't lost;
+    2. MangaUpdates series_id (only trusted if the series still plausibly
+       looks like the same manga -- see the sanity check below);
+    3. exact folder-name match within the same category;
+    4. fuzzy title match.
+    Steps 2-4 only ever consider mangas not already linked to a series
+    seen in this run, so two Komga series can't fight over one manga, and a
+    manga pinned by hand is never re-linked automatically. Komga series
+    with no match are only counted, not created -- Suwayomi (not Komga) is
+    this app's source of truth for which manga exist.
     """
     try:
         library_ids = komga_client.list_library_ids()
@@ -660,6 +792,7 @@ def sync_komga_library(
         session.add(SyncLog(manga_id=None, source=SyncSource.komga, status=SyncStatus.error, message=str(exc)))
         session.commit()
         return {"matched": 0, "unmatched": 0, "pushed": 0, "error": str(exc)}
+    library_names = {library_id: library_client.CATEGORY_DIR_NAMES[category] for category, library_id in library_ids.items()}
 
     # Best-effort: ask Komga to (re)scan now rather than wait on its own
     # internal schedule, so a Suwayomi download that just finished gets
@@ -673,12 +806,6 @@ def sync_komga_library(
                 logger.warning("could not trigger Komga library scan (%s): %s", library_id, exc)
 
     mangas = session.exec(select(Manga)).all()
-    by_folder = {(m.category, normalize_title(m.server_folder)): m for m in mangas}
-    by_mu_id: dict[int, Manga] = {}
-    for m in mangas:
-        series_id = mangaupdates_client.extract_series_id(m.mangaupdates_url) if m.mangaupdates_url else None
-        if series_id is not None:
-            by_mu_id[series_id] = m
 
     try:
         entries: list[tuple[Category, komga_client.KomgaSeries]] = []
@@ -698,9 +825,53 @@ def sync_komga_library(
     # here previously caused every push to fail with 401, silently, since
     # update_metadata() only errors loudly when it opens its own client.
     with komga_client.open_client() as client:
+        # Pass 1: stored IDs. A manga whose stored series wasn't listed is
+        # looked up directly; if it's really gone (deleted, or re-created
+        # under a new ID by a Komga rescan) an unpinned manga falls back to
+        # the other strategies below, a pinned one keeps its ID and shows
+        # the error instead.
+        listed_ids = {series.id for _category, series in entries}
+        linked: dict[str, Manga] = {}
+        for manga in mangas:
+            if not manga.komga_series_id:
+                continue
+            if manga.komga_series_id in listed_ids:
+                linked[manga.komga_series_id] = manga
+                continue
+            try:
+                series = komga_client.fetch_series_by_id(manga.komga_series_id, client=client)
+            except komga_client.KomgaUnavailable as exc:
+                manga.komga_sync_error = f"Série Komga {manga.komga_series_id} introuvable : {exc.reason}"
+                session.add(manga)
+                if manga.komga_id_pinned:
+                    linked[manga.komga_series_id] = manga
+                continue
+            library_name = library_names.get(series.library_id) or komga_client.fetch_library_name(
+                series.library_id, client=client
+            )
+            _apply_komga_series(manga, series, library_name, manga.komga_match_method or "id")
+            session.add(manga)
+            session.commit()
+            linked[series.id] = manga
+            matched += 1
+            if _push_metadata_to_komga(manga, series, client=client):
+                pushed += 1
+            session.add(manga)
+            session.commit()
+
+        claimed_manga_ids = {m.id for m in linked.values()}
+        free = [m for m in mangas if m.id not in claimed_manga_ids]
+        by_folder = {(m.category, normalize_title(m.server_folder)): m for m in free}
+        by_mu_id: dict[int, Manga] = {}
+        for m in free:
+            mu_series_id = mangaupdates_client.extract_series_id(m.mangaupdates_url) if m.mangaupdates_url else None
+            if mu_series_id is not None:
+                by_mu_id[mu_series_id] = m
+
         for i, (category, series) in enumerate(entries, start=1):
-            manga = None
-            if series.mangaupdates_url:
+            manga = linked.get(series.id)
+            method = (manga.komga_match_method or "id") if manga is not None else None
+            if manga is None and series.mangaupdates_url:
                 mu_series_id = mangaupdates_client.extract_series_id(series.mangaupdates_url)
                 if mu_series_id is not None:
                     candidate = by_mu_id.get(mu_series_id)
@@ -711,19 +882,24 @@ def sync_komga_library(
                     # link doesn't silently pair this series with an
                     # unrelated tracked manga. A rejected candidate still
                     # gets a fair shot below via folder/fuzzy-title matching.
-                    if candidate is not None and (
+                    if candidate is not None and candidate.id not in claimed_manga_ids and (
                         normalize_title(candidate.server_folder) == normalize_title(series.name)
                         or looks_related(candidate.title_en, series.name)
                     ):
-                        manga = candidate
+                        manga, method = candidate, "mangaupdates"
             if manga is None:
-                manga = by_folder.get((category, normalize_title(series.name)))
+                candidate = by_folder.get((category, normalize_title(series.name)))
+                if candidate is not None and candidate.id not in claimed_manga_ids:
+                    manga, method = candidate, "dossier"
             if manga is None:
-                candidates = {m.id: m.title_en for m in mangas if m.category == category}
+                candidates = {
+                    m.id: m.title_en for m in free if m.category == category and m.id not in claimed_manga_ids
+                }
                 match = best_match(series.name, candidates)
                 if match is not None:
                     manga_id, _score = match
-                    manga = next((m for m in mangas if m.id == manga_id), None)
+                    manga = next((m for m in free if m.id == manga_id), None)
+                    method = "titre"
 
             if manga is None:
                 unmatched += 1
@@ -731,16 +907,16 @@ def sync_komga_library(
                     progress_callback(i, total)
                 continue
 
-            manga.komga_series_id = series.id
-            manga.komga_books_count = series.books_count
-            manga.komga_books_read_count = series.books_read_count
-            manga.updated_at = datetime.now(timezone.utc)
+            claimed_manga_ids.add(manga.id)
+            _apply_komga_series(manga, series, library_names.get(series.library_id), method)
             session.add(manga)
             session.commit()
             matched += 1
 
             if _push_metadata_to_komga(manga, series, client=client):
                 pushed += 1
+            session.add(manga)
+            session.commit()
 
             if progress_callback:
                 progress_callback(i, total)
