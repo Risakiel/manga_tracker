@@ -756,8 +756,23 @@ def apply_identify(session: Session, manga: Manga, source: str, external_id: str
     )
 
 
-def sync_komga_library(
+def link_new_komga_series(
     session: Session, progress_callback: Optional[Callable[[int, int], None]] = None
+) -> dict:
+    """Fast variant of sync_komga_library for frequent scheduling: only
+    looks at Komga series not linked to any manga yet (typically a series
+    Komga just picked up after a Suwayomi download landed on the NAS) and
+    tries to pair each one with a manga that has no Komga ID yet, with the
+    same matching rules. Newly linked series get the usual routine push
+    (MangaUpdates link, missing metadata, Suwayomi tags) right away;
+    already-linked series are left untouched (no progress refresh)."""
+    return sync_komga_library(session, progress_callback=progress_callback, only_new=True)
+
+
+def sync_komga_library(
+    session: Session,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+    only_new: bool = False,
 ) -> dict:
     """Reconcile tracked mangas against Komga (the actual reading library):
     pulls real read progress (booksReadCount vs booksCount) plus what Komga
@@ -817,6 +832,10 @@ def sync_komga_library(
         session.commit()
         return {"matched": 0, "unmatched": 0, "pushed": 0, "error": str(exc)}
 
+    if only_new:
+        already_linked = {m.komga_series_id for m in mangas if m.komga_series_id}
+        entries = [(category, series) for category, series in entries if series.id not in already_linked]
+
     matched = 0
     unmatched = 0
     pushed = 0
@@ -834,6 +853,11 @@ def sync_komga_library(
         linked: dict[str, Manga] = {}
         for manga in mangas:
             if not manga.komga_series_id:
+                continue
+            if only_new:
+                # Any manga that already has an ID stays out of the
+                # matching, whether or not its series was listed.
+                linked[manga.komga_series_id] = manga
                 continue
             if manga.komga_series_id in listed_ids:
                 linked[manga.komga_series_id] = manga
@@ -926,7 +950,7 @@ def sync_komga_library(
             manga_id=None,
             source=SyncSource.komga,
             status=SyncStatus.success,
-            message=f"matched={matched} unmatched={unmatched} pushed={pushed}",
+            message=f"{'new series only: ' if only_new else ''}matched={matched} unmatched={unmatched} pushed={pushed}",
         )
     )
     session.commit()

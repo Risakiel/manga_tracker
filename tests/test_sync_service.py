@@ -1310,3 +1310,37 @@ def test_komga_sync_never_links_two_series_to_the_same_manga(monkeypatch):
     assert result["matched"] == 1
     assert result["unmatched"] == 1
     assert session.exec(select(Manga)).one().komga_series_id == "series-a"
+
+
+def test_link_new_komga_series_only_touches_unlinked_series_and_mangas(monkeypatch):
+    from app.services.sync_service import link_new_komga_series
+
+    session = _session()
+    session.add(
+        Manga(category=Category.manga, title_en="Old One", server_folder="Old One", komga_series_id="series-old",
+              komga_books_count=1)
+    )
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Fresh One",
+            server_folder="Fresh One",
+            mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/fresh-one",
+        )
+    )
+    session.commit()
+
+    updates = []
+    old = komga_client.KomgaSeries(id="series-old", library_id="lib-manga", name="Old One", books_count=99)
+    fresh = komga_client.KomgaSeries(id="series-fresh", library_id="lib-manga", name="Fresh One", books_count=3)
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [old, fresh]}, updates=updates)
+
+    result = link_new_komga_series(session)
+
+    assert result == {"matched": 1, "unmatched": 0, "pushed": 1}
+    by_title = {m.title_en: m for m in session.exec(select(Manga)).all()}
+    assert by_title["Fresh One"].komga_series_id == "series-fresh"
+    assert by_title["Fresh One"].komga_match_method == "dossier"
+    # Already-linked series is skipped entirely: no progress refresh, no push.
+    assert by_title["Old One"].komga_books_count == 1
+    assert [series_id for series_id, _patch in updates] == ["series-fresh"]
