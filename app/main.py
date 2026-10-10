@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
+from app.services.jobs import mark_interrupted_runs
 from app.routers import pages
 from app.services.scheduler import shutdown_scheduler, start_scheduler
 
@@ -14,6 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    mark_interrupted_runs()
     start_scheduler()
     yield
     shutdown_scheduler()

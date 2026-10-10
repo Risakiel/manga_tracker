@@ -147,3 +147,82 @@ def test_schedule_resumes_from_last_run_and_honours_disable(fake_job):
         assert sched.get_job("fake_job") is None
     finally:
         sched.shutdown(wait=False)
+
+
+def test_run_job_writes_history_entry(fake_job):
+    from sqlmodel import select
+
+    from app.models import SyncLog, SyncSource, SyncStatus
+
+    jobs.run_job("fake_job", "planifié")
+    with Session(engine) as session:
+        log = session.exec(
+            select(SyncLog).where(SyncLog.job_id == "fake_job").order_by(SyncLog.id.desc())
+        ).first()
+    assert log.source == SyncSource.job
+    assert log.status == SyncStatus.success
+    assert log.trigger == "planifié"
+    assert log.finished_at is not None
+    assert "3 lié(s)" in log.message
+
+
+def test_mark_interrupted_runs(fake_job):
+    from app.models import SyncLog, SyncSource, SyncStatus
+
+    with Session(engine) as session:
+        log = SyncLog(source=SyncSource.job, status=SyncStatus.running, job_id="fake_job", trigger="manuel")
+        session.add(log)
+        session.commit()
+        log_id = log.id
+    jobs.mark_interrupted_runs()
+    with Session(engine) as session:
+        log = session.get(SyncLog, log_id)
+        assert log.status == SyncStatus.error
+        assert "interrompue" in log.message
+
+
+def test_logs_filters(client):
+    from app.models import Manga, SyncLog, SyncSource, SyncStatus
+
+    with Session(engine) as session:
+        manga = Manga(title_en="Filtre Manga", server_folder="Filtre Manga")
+        session.add(manga)
+        session.commit()
+        session.add_all(
+            [
+                SyncLog(
+                    source=SyncSource.job,
+                    status=SyncStatus.success,
+                    job_id="komga_sync",
+                    trigger="planifié",
+                    message="job-marker-planned",
+                    created_at=datetime(2026, 10, 9, 12, 0),
+                    finished_at=datetime(2026, 10, 9, 12, 2, 5),
+                ),
+                SyncLog(
+                    source=SyncSource.mangaupdates,
+                    status=SyncStatus.error,
+                    manga_id=manga.id,
+                    message="mu-marker-error",
+                    created_at=datetime(2026, 10, 1, 12, 0),
+                ),
+            ]
+        )
+        session.commit()
+
+    resp = client.get("/logs")
+    assert "job-marker-planned" in resp.text and "mu-marker-error" in resp.text
+    assert "2 min 05 s" in resp.text
+    assert "Filtre Manga" in resp.text
+
+    resp = client.get("/logs", params={"source": "job", "trigger": "planifié"})
+    assert "job-marker-planned" in resp.text and "mu-marker-error" not in resp.text
+
+    resp = client.get("/logs", params={"status": "error"})
+    assert "job-marker-planned" not in resp.text and "mu-marker-error" in resp.text
+
+    resp = client.get("/logs", params={"date_from": "2026-10-05"})
+    assert "job-marker-planned" in resp.text and "mu-marker-error" not in resp.text
+
+    resp = client.get("/logs", params={"q": "filtre manga"})
+    assert "job-marker-planned" not in resp.text and "mu-marker-error" in resp.text

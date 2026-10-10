@@ -15,11 +15,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import session_scope
-from app.models import ScheduledJob
+from app.models import ScheduledJob, SyncLog, SyncSource, SyncStatus
 from app.services import library_client
 from app.services.sync_service import (
     sync_all_manga_sources,
@@ -204,12 +204,23 @@ def run_job(job_id: str, trigger: str = "manuel") -> bool:
     started_at = datetime.now(timezone.utc)
     job.state.update(running=True, total=0, done=0, error=None, **{k: 0 for k in job.result_keys})
     status, message = "success", ""
+    log_id: Optional[int] = None
     try:
         with session_scope() as session:
             row = _row(session, job_id)
             row.last_started_at = started_at
             session.add(row)
+            log = SyncLog(
+                source=SyncSource.job,
+                status=SyncStatus.running,
+                job_id=job_id,
+                trigger=trigger,
+                created_at=started_at,
+                message=f"{job.label} : en cours…",
+            )
+            session.add(log)
             session.commit()
+            log_id = log.id
 
         def _on_progress(done: int, total: int) -> None:
             job.state.update(done=done, total=total)
@@ -229,9 +240,16 @@ def run_job(job_id: str, trigger: str = "manuel") -> bool:
         job.state["running"] = False
         try:
             with session_scope() as session:
+                finished_at = datetime.now(timezone.utc)
+                log = session.get(SyncLog, log_id) if log_id is not None else None
+                if log is not None:
+                    log.status = SyncStatus.success if status == "success" else SyncStatus.error
+                    log.finished_at = finished_at
+                    log.message = f"{job.label} : {message}" if message else job.label
+                    session.add(log)
                 row = _row(session, job_id)
                 row.last_started_at = started_at
-                row.last_finished_at = datetime.now(timezone.utc)
+                row.last_finished_at = finished_at
                 row.last_status = status
                 row.last_message = f"[{trigger}] {message}".strip()
                 session.add(row)
@@ -253,3 +271,18 @@ def start_in_background(job_id: str) -> bool:
     job.state["running"] = True
     threading.Thread(target=run_job, args=(job_id, "manuel"), daemon=True, name=f"job-{job_id}").start()
     return True
+
+
+def mark_interrupted_runs() -> None:
+    """A job still "running" in the history at startup was cut short by a
+    container restart -- close it as an error instead of leaving it
+    "en cours" forever."""
+    with session_scope() as session:
+        stale = session.exec(
+            select(SyncLog).where(SyncLog.source == SyncSource.job, SyncLog.status == SyncStatus.running)
+        ).all()
+        for log in stale:
+            log.status = SyncStatus.error
+            log.message = f"{log.message} (interrompue par un redémarrage)"
+            session.add(log)
+        session.commit()

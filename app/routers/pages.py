@@ -1,20 +1,22 @@
 import shutil
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
-from app.models import Category, ChapterSource, Manga, ScheduledJob, Status, SyncLog
+from app.models import Category, ChapterSource, Manga, ScheduledJob, Status, SyncLog, SyncSource, SyncStatus
 from app.services import jobs, scheduler
 from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client
 from app.services.excel_importer import import_excel
@@ -62,7 +64,7 @@ _komga_sync_progress = jobs.state("komga_sync")
 _library_sync_progress = jobs.state("library_sync")
 
 
-def _localtime(value: Optional[datetime]) -> str:
+def _localtime(value: Optional[datetime], fmt: str = "%d/%m/%Y %H:%M") -> str:
     if value is None:
         return "—"
     if value.tzinfo is None:
@@ -71,7 +73,7 @@ def _localtime(value: Optional[datetime]) -> str:
         tz = ZoneInfo(settings.display_timezone)
     except Exception:  # noqa: BLE001 -- unknown/missing tz data: fall back to UTC
         tz = timezone.utc
-    return value.astimezone(tz).strftime("%d/%m/%Y %H:%M")
+    return value.astimezone(tz).strftime(fmt)
 
 
 templates.env.filters["localtime"] = _localtime
@@ -513,10 +515,123 @@ def import_post(request: Request, file: UploadFile = File(...), session: Session
     return templates.TemplateResponse(request, "import.html", {"summary": summary})
 
 
+_LOG_SOURCE_LABELS = {
+    "job": "⏱️ Tâche",
+    "suwayomi": "Suwayomi",
+    "komga": "Komga",
+    "library": "Dossiers serveur",
+    "mangaupdates": "MangaUpdates",
+    "mangadex": "MangaDex",
+    "anilist": "AniList",
+    "excel": "Import Excel",
+}
+_LOG_STATUS_LABELS = {"success": "✅ Succès", "error": "❌ Erreur", "running": "⏳ En cours"}
+_LOGS_PAGE_SIZE = 100
+
+
+def _parse_day(value: str) -> Optional[datetime]:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _format_duration(seconds: Optional[float]) -> str:
+    if seconds is None:
+        return ""
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {seconds:02d} s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes:02d} min"
+
+
+templates.env.filters["duration"] = _format_duration
+
+
 @router.get("/logs", response_class=HTMLResponse)
-def logs(request: Request, session: Session = Depends(get_session)):
-    entries = session.exec(select(SyncLog).order_by(SyncLog.created_at.desc()).limit(200)).all()
-    return templates.TemplateResponse(request, "logs.html", {"logs": entries})
+def logs(
+    request: Request,
+    source: str = "",
+    status: str = "",
+    job: str = "",
+    trigger: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    q: str = "",
+    page: int = 1,
+    session: Session = Depends(get_session),
+):
+    query = select(SyncLog)
+    if source in _LOG_SOURCE_LABELS:
+        query = query.where(SyncLog.source == SyncSource(source))
+    if status in _LOG_STATUS_LABELS:
+        query = query.where(SyncLog.status == SyncStatus(status))
+    if job in jobs.JOBS:
+        query = query.where(SyncLog.job_id == job)
+    if trigger in {"planifié", "manuel"}:
+        query = query.where(SyncLog.trigger == trigger)
+    # Dates are picked in the display timezone but stored in UTC.
+    try:
+        tz = ZoneInfo(settings.display_timezone)
+    except Exception:  # noqa: BLE001
+        tz = timezone.utc
+    start = _parse_day(date_from)
+    if start is not None:
+        query = query.where(SyncLog.created_at >= start.replace(tzinfo=tz).astimezone(timezone.utc).replace(tzinfo=None))
+    end = _parse_day(date_to)
+    if end is not None:
+        end = (end + timedelta(days=1)).replace(tzinfo=tz).astimezone(timezone.utc).replace(tzinfo=None)
+        query = query.where(SyncLog.created_at < end)
+    q = q.strip()
+    if q:
+        pattern = f"%{q}%"
+        manga_ids = select(Manga.id).where(Manga.title_en.ilike(pattern))
+        query = query.where(or_(SyncLog.message.ilike(pattern), SyncLog.manga_id.in_(manga_ids)))
+
+    total = session.exec(select(func.count()).select_from(query.subquery())).one()
+    pages = max((total + _LOGS_PAGE_SIZE - 1) // _LOGS_PAGE_SIZE, 1)
+    page = min(max(page, 1), pages)
+    entries = session.exec(
+        query.order_by(SyncLog.created_at.desc(), SyncLog.id.desc())
+        .offset((page - 1) * _LOGS_PAGE_SIZE)
+        .limit(_LOGS_PAGE_SIZE)
+    ).all()
+    manga_ids_on_page = {e.manga_id for e in entries if e.manga_id}
+    manga_titles = (
+        dict(session.exec(select(Manga.id, Manga.title_en).where(Manga.id.in_(manga_ids_on_page))).all())
+        if manga_ids_on_page
+        else {}
+    )
+    filters = {
+        "source": source,
+        "status": status,
+        "job": job,
+        "trigger": trigger,
+        "date_from": date_from,
+        "date_to": date_to,
+        "q": q,
+    }
+    return templates.TemplateResponse(
+        request,
+        "logs.html",
+        {
+            "logs": entries,
+            "manga_titles": manga_titles,
+            "filters": filters,
+            "active_filters": any(filters.values()),
+            "query_string": urlencode({k: v for k, v in filters.items() if v}),
+            "source_labels": _LOG_SOURCE_LABELS,
+            "status_labels": _LOG_STATUS_LABELS,
+            "job_labels": {job_id: j.label for job_id, j in jobs.JOBS.items()},
+            "total": total,
+            "page": page,
+            "pages": pages,
+        },
+    )
 
 
 @router.get("/server-folders", response_class=HTMLResponse)
