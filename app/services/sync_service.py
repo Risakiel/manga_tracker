@@ -15,9 +15,10 @@ import httpx
 from sqlmodel import Session, select
 
 from app.config import settings
-from app.models import Category, Manga, Status, SyncLog, SyncSource, SyncStatus
+from app.models import Category, Manga, ReadingUnit, Status, SyncLog, SyncSource, SyncStatus
 from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client, suwayomi_client
 from app.services.matching import best_match, looks_related, normalize_title
+from app.services.reading_unit import detect_unit
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,41 @@ def _derive_status(status_raw: str, completed: bool) -> Status:
         if keyword in lowered:
             return status
     return Status.complete if completed else Status.ongoing
+
+
+def refresh_volume_count(manga: Manga, client: httpx.Client | None = None) -> None:
+    """Fallback volume count for a volume-based manga whose MangaUpdates
+    status gives none: the highest volume among its latest releases.
+    Best-effort -- a failure just leaves the count unknown ("?")."""
+    if not manga.is_volumes or manga.mangaupdates_id is None:
+        return
+    try:
+        volume = mangaupdates_client.fetch_latest_release_volume(manga.mangaupdates_id, client=client)
+    except httpx.HTTPError as exc:
+        logger.warning("could not fetch MangaUpdates releases for %s: %s", manga.mangaupdates_id, exc)
+        return
+    if volume is not None:
+        manga.mu_latest_volume = volume
+
+
+def apply_mangaupdates_counts(
+    manga: Manga, series: mangaupdates_client.MangaUpdatesSeries, client: httpx.Client | None = None
+) -> None:
+    """Stores both MangaUpdates counts -- chapters and volumes -- so the
+    manga's reading unit can switch either way without a resync."""
+    manga.mangaupdates_id = series.series_id
+    manga.mu_latest_chapter = series.latest_chapter
+    manga.mu_latest_volume = series.latest_volume
+    if series.latest_volume is None:
+        refresh_volume_count(manga, client=client)
+
+
+def set_reading_unit(manga: Manga, unit: ReadingUnit, pinned: bool, client: httpx.Client | None = None) -> None:
+    switched_to_volumes = unit == ReadingUnit.volumes and manga.reading_unit != unit
+    manga.reading_unit = unit
+    manga.reading_unit_pinned = pinned
+    if switched_to_volumes and manga.mu_latest_volume is None:
+        refresh_volume_count(manga, client=client)
 
 
 def sync_manga_with_mangaupdates(session: Session, manga: Manga, client: httpx.Client | None = None) -> None:
@@ -72,7 +108,7 @@ def sync_manga_with_mangaupdates(session: Session, manga: Manga, client: httpx.C
     manga.match_candidates = []
     manga.status_raw = series.status_raw
     manga.status = _derive_status(series.status_raw, series.completed)
-    manga.mu_latest_chapter = series.latest_chapter
+    apply_mangaupdates_counts(manga, series, client=client)
     manga.author = ", ".join(series.authors) or manga.author
     manga.artist = ", ".join(series.artists) or manga.artist
     manga.genres = series.genres or manga.genres
@@ -506,6 +542,26 @@ def _apply_komga_series(
     manga.updated_at = now
 
 
+def _detect_reading_unit(
+    manga: Manga, series: "komga_client.KomgaSeries", previous_books_count: Optional[int], client: httpx.Client
+) -> None:
+    """Chapters or volumes, from the Komga book titles. Skipped when the
+    unit was set by hand, and when it is already known and the series has
+    no new books since (one extra Komga call per series otherwise)."""
+    if manga.reading_unit_pinned:
+        return
+    if manga.reading_unit is not None and previous_books_count == series.books_count:
+        return
+    try:
+        books = komga_client.fetch_books(series.id, client=client)
+    except komga_client.KomgaUnavailable as exc:
+        logger.warning("could not list Komga books of %s: %s", series.id, exc)
+        return
+    unit = detect_unit(book.name or book.title for book in books)
+    if unit is not None:
+        set_reading_unit(manga, unit, pinned=False)
+
+
 def sync_manga_with_komga(
     session: Session, manga: Manga, client: Optional[httpx.Client] = None, method: Optional[str] = None
 ) -> list[str]:
@@ -522,7 +578,9 @@ def sync_manga_with_komga(
     try:
         series = komga_client.fetch_series_by_id(manga.komga_series_id, client=client)
         library_name = komga_client.fetch_library_name(series.library_id, client=client)
+        previous_books_count = manga.komga_books_count
         _apply_komga_series(manga, series, library_name, method or manga.komga_match_method or "id")
+        _detect_reading_unit(manga, series, previous_books_count, client)
         pushed = _push_metadata_to_komga(manga, series, client=client)
     except komga_client.KomgaUnavailable as exc:
         manga.komga_sync_error = f"Série Komga {manga.komga_series_id} inaccessible : {exc.reason}"
@@ -746,7 +804,7 @@ def apply_identify(session: Session, manga: Manga, source: str, external_id: str
         manga.match_candidates = []
         manga.status_raw = series.status_raw
         manga.status = _derive_status(series.status_raw, series.completed)
-        manga.mu_latest_chapter = series.latest_chapter
+        apply_mangaupdates_counts(manga, series)
         manga.author = ", ".join(series.authors) or manga.author
         manga.artist = ", ".join(series.artists) or manga.artist
         manga.genres = series.genres or manga.genres
@@ -928,7 +986,9 @@ def sync_komga_library(
             library_name = library_names.get(series.library_id) or komga_client.fetch_library_name(
                 series.library_id, client=client
             )
+            previous_books_count = manga.komga_books_count
             _apply_komga_series(manga, series, library_name, manga.komga_match_method or "id")
+            _detect_reading_unit(manga, series, previous_books_count, client)
             session.add(manga)
             session.commit()
             linked[series.id] = manga
@@ -987,7 +1047,9 @@ def sync_komga_library(
                 continue
 
             claimed_manga_ids.add(manga.id)
+            previous_books_count = manga.komga_books_count
             _apply_komga_series(manga, series, library_names.get(series.library_id), method)
+            _detect_reading_unit(manga, series, previous_books_count, client)
             session.add(manga)
             session.commit()
             matched += 1

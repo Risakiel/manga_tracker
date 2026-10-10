@@ -247,6 +247,7 @@ def _fake_komga(monkeypatch, updates):
 
     monkeypatch.setattr(komga_client, "fetch_series_by_id", _fetch)
     monkeypatch.setattr(komga_client, "fetch_library_name", lambda library_id, client=None: "Manga")
+    monkeypatch.setattr(komga_client, "fetch_books", lambda series_id, client=None: [])
     monkeypatch.setattr(
         komga_client, "update_metadata", lambda series_id, patch, client=None: updates.append((series_id, patch))
     )
@@ -371,3 +372,38 @@ def test_editing_mangaupdates_url_pushes_it_to_komga_right_away(client, monkeypa
     assert updates and updates[-1][1]["links"] == [
         {"label": "MangaUpdates", "url": "https://www.mangaupdates.com/series/kljw00c/push-link"}
     ]
+
+
+def test_reading_unit_can_be_pinned_by_hand_and_handed_back_to_detection(client):
+    from app.models import ReadingUnit
+
+    with Session(engine) as session:
+        manga = Manga(
+            category=Category.manga,
+            title_en="Unit Manga",
+            server_folder="Unit Manga",
+            suwayomi_chapter_count=17,
+            mu_latest_chapter=85,
+            mu_latest_volume=26,
+        )
+        session.add(manga)
+        session.commit()
+        manga_id = manga.id
+
+    client.post(f"/manga/{manga_id}/reading-unit", data={"unit": "volumes"}, follow_redirects=False)
+    with Session(engine) as session:
+        manga = session.get(Manga, manga_id)
+        assert manga.reading_unit == ReadingUnit.volumes
+        assert manga.reading_unit_pinned is True
+
+    page = client.get(f"/manga/{manga_id}").text
+    assert "Dernier volume retenu" in page
+    assert "Volumes Suwayomi" in page
+    assert "en retard de 9 volume(s)" in page
+
+    client.post(f"/manga/{manga_id}/reading-unit", data={"unit": "auto"}, follow_redirects=False)
+    with Session(engine) as session:
+        manga = session.get(Manga, manga_id)
+        assert manga.reading_unit is None
+        assert manga.reading_unit_pinned is False
+    assert "Dernier chapitre retenu" in client.get(f"/manga/{manga_id}").text

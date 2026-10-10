@@ -52,6 +52,17 @@ class ChapterSource(str, Enum):
     mangadex = "mangadex"
 
 
+class ReadingUnit(str, Enum):
+    """What one downloaded item of a manga is: a chapter or a whole volume.
+    Decides which MangaUpdates figure "Dernier chapitre retenu" and the
+    "en retard" count are compared against -- comparing 17 downloaded
+    volumes to an 85-chapter count made every volume-based manga look
+    hopelessly behind."""
+
+    chapters = "chapters"
+    volumes = "volumes"
+
+
 class Manga(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
@@ -90,6 +101,17 @@ class Manga(SQLModel, table=True):
 
     baseline_chapter_count: Optional[float] = None
     mu_latest_chapter: Optional[float] = None
+    # Volume count from MangaUpdates ("26 Volumes (Ongoing)" in its status,
+    # else the highest volume among its latest releases) -- the figure used
+    # instead of mu_latest_chapter when the manga is downloaded by volume.
+    mu_latest_volume: Optional[float] = None
+
+    # Chapters or volumes, auto-detected from the Komga book titles
+    # ("Volume 4" vs "Ch.5") unless set by hand on the detail page
+    # (reading_unit_pinned), in which case detection never overrides it.
+    # NULL = not detected yet, treated as chapters.
+    reading_unit: Optional[ReadingUnit] = Field(default=None, index=True)
+    reading_unit_pinned: Optional[bool] = None
 
     suwayomi_manga_id: Optional[int] = Field(default=None, index=True)
     suwayomi_chapter_count: Optional[int] = None
@@ -183,11 +205,23 @@ class Manga(SQLModel, table=True):
         self.mangadex_match_candidates_json = json.dumps(value)
 
     @property
+    def unit(self) -> ReadingUnit:
+        return self.reading_unit or ReadingUnit.chapters
+
+    @property
+    def is_volumes(self) -> bool:
+        return self.unit == ReadingUnit.volumes
+
+    @property
     def authoritative_latest_chapter(self) -> Optional[float]:
-        """The chapter count `chapters_behind` is computed from: the
+        """The latest volume (MangaUpdates) for a volume-based manga --
+        MangaDex/AniList only count chapters, so no fallback there. Else
+        the chapter count `chapters_behind` is computed from: the
         preferred source (MangaUpdates by default) if it has one, else
         whichever of MangaUpdates/MangaDex does -- AniList is excluded, see
         ChapterSource."""
+        if self.is_volumes:
+            return self.mu_latest_volume
         source = self.preferred_chapter_source or ChapterSource.mangaupdates
         preferred = self.mangadex_latest_chapter if source == ChapterSource.mangadex else self.mu_latest_chapter
         if preferred is not None:
