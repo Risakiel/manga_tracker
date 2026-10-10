@@ -95,6 +95,22 @@ class Manga(SQLModel, table=True):
     komga_series_id: Optional[str] = Field(default=None, index=True)
     komga_books_count: Optional[int] = None
     komga_books_read_count: Optional[int] = None
+    # What Komga itself says about the linked series, refreshed on every
+    # Komga sync -- shown in the detail page's "Komga" box so a wrong or
+    # stale link is visible at a glance. All nullable: added after the
+    # fact, existing rows just show "?" until their next Komga sync.
+    komga_series_name: Optional[str] = None
+    komga_library_name: Optional[str] = None
+    komga_folder_path: Optional[str] = None
+    komga_mangaupdates_url: Optional[str] = None
+    komga_links_locked: Optional[bool] = None
+    # How the series was linked ("id", "manuel", "mangaupdates", "dossier",
+    # "titre") -- and whether the user pinned it by hand, in which case the
+    # automatic matching never re-links this manga to another series.
+    komga_match_method: Optional[str] = None
+    komga_id_pinned: Optional[bool] = None
+    komga_synced_at: Optional[datetime] = None
+    komga_sync_error: Optional[str] = Field(default=None, sa_column=Column(Text))
 
     author: str = ""
     artist: str = ""
@@ -175,6 +191,21 @@ class Manga(SQLModel, table=True):
         if self.suwayomi_chapter_count is None or latest is None:
             return None
         return max(latest - self.suwayomi_chapter_count, 0)
+
+    @property
+    def komga_mangaupdates_status(self) -> str:
+        """Compares the MangaUpdates link Komga holds against ours:
+        "same", "different", "missing_komga", "missing_ours" or "unknown"
+        (never synced with Komga yet)."""
+        if not self.komga_series_id or self.komga_synced_at is None:
+            return "unknown"
+        if not self.mangaupdates_url:
+            return "missing_ours"
+        if not self.komga_mangaupdates_url:
+            return "missing_komga"
+        from app.services.mangaupdates_client import same_series_url
+
+        return "same" if same_series_url(self.mangaupdates_url, self.komga_mangaupdates_url) else "different"
 
     @property
     def komga_unread_count(self) -> Optional[int]:

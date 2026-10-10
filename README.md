@@ -24,9 +24,10 @@ bibliothèque [Suwayomi](https://github.com/Suwayomi/Suwayomi-Server) + [Komga](
   terminée, mais reste utile en enrichissement (couverture, titres alternatifs).
 - Intégration [Komga](https://komga.org/) (la bibliothèque de lecture) : récupère la vraie
   progression de lecture (chapitres lus vs juste téléchargés), pousse vers Komga les infos
-  MangaUpdates qu'il n'a pas encore (résumé, genres, titres alternatifs, lien MangaUpdates —
-  uniquement quand Komga n'a rien à cet endroit, jamais en écrasant), et ajoute un lien
-  "Voir sur Komga" sur chaque fiche.
+  MangaUpdates qu'il n'a pas encore (résumé, genres, titres alternatifs — uniquement quand
+  Komga n'a rien à cet endroit, jamais en écrasant), garde le lien MangaUpdates aligné des deux
+  côtés, et affiche une box "Komga" sur chaque fiche (ID de série, titre, bibliothèque, dossier,
+  lien MangaUpdates côté Komga vs ici, dernière synchro).
 - Interface web simple (FastAPI + Jinja2 + HTMX, SQLite), packagée en image Docker. Le
   tableau de bord distingue le **Type** (Manga/Pornhwa, propre à cette appli) des
   **Catégories Suwayomi** (tes groupes de bibliothèque) comme deux filtres séparés.
@@ -62,10 +63,17 @@ par exemple dans `docker-compose.yml` ou le template Unraid) :
 
 ### Komga
 
-La correspondance entre un manga suivi et sa fiche Komga se fait, dans l'ordre : par lien
-MangaUpdates commun (le plus fiable), puis par nom de dossier exact (même NAS, même
-convention de nommage que Komga), puis par titre approché. Seules les bibliothèques Komga
-nommées `Manga` et `Pornhwa` sont prises en compte, comme pour le partage NAS.
+La correspondance entre un manga suivi et sa fiche Komga se fait, dans l'ordre : par l'ID de
+série Komga déjà mémorisé sur la fiche (le seul lien vraiment stable), puis par lien
+MangaUpdates commun, puis par nom de dossier exact (même NAS, même convention de nommage que
+Komga), puis par titre approché. Une série Komga ne peut être reliée qu'à un seul manga. Seules
+les bibliothèques Komga nommées `Manga` et `Pornhwa` sont parcourues, comme pour le partage NAS.
+
+La box "Komga" de la fiche d'un manga permet aussi de saisir l'ID (ou de coller le lien
+`http://…/series/<id>`) de la bonne série à la main : l'ID est vérifié dans Komga avant d'être
+enregistré, puis **épinglé** — la synchro automatique ne le remplacera plus jamais par une
+autre série (même hors des bibliothèques `Manga`/`Pornhwa`). Laisser le champ vide délie le
+manga.
 
 La synchro Komga n'a pas son propre planning : elle s'enchaîne automatiquement juste après
 chaque synchro Suwayomi (donc toutes les `SUWAYOMI_SYNC_INTERVAL_HOURS`), et demande d'abord
@@ -80,6 +88,12 @@ non-destructif : un champ n'est envoyé que s'il est **vide et non verrouillé**
 outil comme komf). Vérifié en direct sur une vraie bibliothèque (plus de 300 séries) : liens
 MangaUpdates ajoutés sans toucher les liens déjà présents, résumé/genres/titres alternatifs
 remplis seulement là où ils étaient réellement absents.
+
+Seule exception, le lien MangaUpdates : c'est lui qui identifie la série des deux côtés, donc
+si Komga pointe vers une **autre** série MangaUpdates que MangaTracker (lien périmé, posé par
+komf avant une correction ici…), il est remplacé par le nôtre — les autres liens ne sont pas
+touchés, et un champ "Liens" verrouillé dans Komga reste protégé (la box Komga le signale).
+Corriger le lien MangaUpdates sur une fiche le pousse aussi tout de suite vers Komga.
 
 ### Identifier (remplace komf)
 

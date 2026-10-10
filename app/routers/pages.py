@@ -19,9 +19,11 @@ from app.services.excel_importer import import_excel
 from app.services.sync_service import (
     apply_identify,
     enrich_with_anilist,
+    link_manga_to_komga_series,
     search_identify_candidates,
     sync_komga_library,
     sync_manga_all_sources,
+    sync_manga_with_komga,
     sync_manga_with_anilist_link,
     sync_manga_with_mangadex,
     sync_manga_with_mangaupdates,
@@ -230,7 +232,35 @@ def manga_set_mangaupdates_url(
         # right away instead of waiting for the next scheduled/manual sync.
         sync_manga_with_mangaupdates(session, manga)
         enrich_with_anilist(session, manga)
+        _push_mangaupdates_link_to_komga(session, manga)
     return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+def _push_mangaupdates_link_to_komga(session: Session, manga: Manga) -> None:
+    """A MangaUpdates link corrected here must reach Komga right away --
+    otherwise Komga keeps the old one until the next full Komga sync."""
+    if settings.komga_url and manga.komga_series_id:
+        sync_manga_with_komga(session, manga)
+
+
+@router.post("/manga/{manga_id}/komga-series")
+def manga_set_komga_series(manga_id: int, komga_series: str = Form(""), session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None:
+        error = link_manga_to_komga_series(session, manga, komga_series)
+        if error:
+            manga.komga_sync_error = error
+            session.add(manga)
+            session.commit()
+    return RedirectResponse(f"/manga/{manga_id}#komga", status_code=303)
+
+
+@router.post("/manga/{manga_id}/komga-sync")
+def manga_komga_sync(manga_id: int, session: Session = Depends(get_session)):
+    manga = session.get(Manga, manga_id)
+    if manga is not None:
+        sync_manga_with_komga(session, manga)
+    return RedirectResponse(f"/manga/{manga_id}#komga", status_code=303)
 
 
 @router.post("/manga/{manga_id}/server-folder")
@@ -288,6 +318,7 @@ def manga_manual_match(
         manga.updated_at = datetime.now(timezone.utc)
         session.add(manga)
         session.commit()
+        _push_mangaupdates_link_to_komga(session, manga)
     return RedirectResponse(f"/manga/{manga_id}", status_code=303)
 
 

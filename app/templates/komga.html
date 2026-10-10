@@ -5,11 +5,14 @@
 {% block content %}
 
 <p>
-    Relie chaque manga suivi à sa fiche Komga (par lien MangaUpdates commun, puis par nom de
-    dossier, puis par titre) pour récupérer la vraie progression de lecture (chapitres lus vs
-    téléchargés), et pousse vers Komga les infos MangaUpdates qui lui manquent (résumé, genres,
-    titres alternatifs, lien MangaUpdates) — uniquement quand Komga n'a rien de saisi à cet
-    endroit, jamais en écrasant une valeur existante.
+    Relie chaque manga suivi à sa fiche Komga (par ID de série déjà mémorisé, puis par lien
+    MangaUpdates commun, puis par nom de dossier, puis par titre) pour récupérer la vraie
+    progression de lecture (chapitres lus vs téléchargés), et pousse vers Komga les infos
+    MangaUpdates qui lui manquent (résumé, genres, titres alternatifs) — uniquement quand Komga
+    n'a rien de saisi à cet endroit, jamais en écrasant une valeur existante. Le lien
+    MangaUpdates, lui, est remplacé s'il pointe vers une autre série que le nôtre (sauf champ
+    verrouillé dans Komga). Le détail de chaque liaison est visible dans la box "Komga" de la
+    fiche d'un manga, où l'ID Komga peut aussi être corrigé à la main.
 </p>
 <p>
     Les catégories Suwayomi de chaque manga (ex. "Terminé", "Scans manquants") sont en plus

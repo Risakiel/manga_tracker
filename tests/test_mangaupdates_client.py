@@ -5,6 +5,7 @@ from app.services.mangaupdates_client import (
     extract_series_id,
     fetch_series,
     resolve_series,
+    same_series_url,
     search_series,
 )
 
@@ -194,3 +195,18 @@ def test_search_series_parses_results():
     assert len(candidates) == 1
     assert candidates[0].title == "Foo"
     assert candidates[0].cover_url == "https://img/foo-thumb.jpg"
+
+
+def test_extract_series_id_without_trailing_slug():
+    assert extract_series_id("https://www.mangaupdates.com/series/kljw00c") == int("kljw00c", 36)
+    assert extract_series_id("https://www.mangaupdates.com/series.html?id=123") is None
+
+
+def test_same_series_url_ignores_slug_differences():
+    assert same_series_url(
+        "https://www.mangaupdates.com/series/kljw00c/some-slug", "https://www.mangaupdates.com/series/kljw00c"
+    )
+    assert not same_series_url(
+        "https://www.mangaupdates.com/series/kljw00c/a", "https://www.mangaupdates.com/series/aaaaaaa/a"
+    )
+    assert not same_series_url("https://www.mangaupdates.com/series/kljw00c/a", None)

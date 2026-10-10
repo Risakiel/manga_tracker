@@ -17,7 +17,10 @@ from app.config import settings
 from app.services.matching import best_match_with_margin
 
 BASE_URL = "https://api.mangaupdates.com/v1"
-_SLUG_RE = re.compile(r"/series/([0-9a-z]+)/")
+# The trailing slug is optional: a link typed by hand or written by another
+# tool (komf) is often just ".../series/kljw00c" -- requiring the "/" used to
+# make those links unparseable, so they could never be compared to ours.
+_SLUG_RE = re.compile(r"/series/([0-9a-z]+)(?:[/?#]|$)", re.IGNORECASE)
 _CHAPTER_COUNT_RE = re.compile(r"(\d+)\s*Chapters?", re.IGNORECASE)
 
 _last_request_at = 0.0
@@ -31,11 +34,22 @@ def extract_series_id(mangaupdates_url: str) -> Optional[int]:
     match = _SLUG_RE.search(mangaupdates_url)
     if not match:
         return None
-    slug = match.group(1)
+    slug = match.group(1).lower()
     try:
         return int(slug, 36)
     except ValueError:
         return None
+
+
+def same_series_url(a: Optional[str], b: Optional[str]) -> bool:
+    """True if two MangaUpdates links point at the same series, regardless
+    of slug/trailing slash/scheme differences."""
+    if not a or not b:
+        return False
+    id_a, id_b = extract_series_id(a), extract_series_id(b)
+    if id_a is not None and id_b is not None:
+        return id_a == id_b
+    return a.strip().rstrip("/").lower() == b.strip().rstrip("/").lower()
 
 
 @dataclass
