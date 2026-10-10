@@ -16,15 +16,17 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
-from app.models import Category, ChapterSource, Manga, ScheduledJob, Status, SyncLog, SyncSource, SyncStatus
+from app.models import Category, ChapterSource, Manga, ReadingUnit, ScheduledJob, Status, SyncLog, SyncSource, SyncStatus
 from app.services import jobs, scheduler
 from app.services import anilist_client, komga_client, library_client, mangadex_client, mangaupdates_client
 from app.services.excel_importer import import_excel
 from app.services.sync_service import (
     apply_identify,
+    apply_mangaupdates_counts,
     enrich_with_anilist,
     link_manga_to_komga_series,
     search_identify_candidates,
+    set_reading_unit,
     sync_komga_library,
     sync_manga_all_sources,
     sync_manga_with_komga,
@@ -308,7 +310,7 @@ def manga_manual_match(
         manga.needs_manual_match = False
         manga.match_candidates = []
         manga.status_raw = series.status_raw
-        manga.mu_latest_chapter = series.latest_chapter
+        apply_mangaupdates_counts(manga, series)
         manga.author = ", ".join(series.authors) or manga.author
         manga.artist = ", ".join(series.artists) or manga.artist
         manga.genres = series.genres or manga.genres
@@ -418,6 +420,23 @@ def manga_set_preferred_chapter_source(
     valid_sources = {s.value for s in ChapterSource}
     if manga is not None and source in valid_sources:
         manga.preferred_chapter_source = ChapterSource(source)
+        manga.updated_at = datetime.now(timezone.utc)
+        session.add(manga)
+        session.commit()
+    return RedirectResponse(f"/manga/{manga_id}", status_code=303)
+
+
+@router.post("/manga/{manga_id}/reading-unit")
+def manga_set_reading_unit(manga_id: int, unit: str = Form(...), session: Session = Depends(get_session)):
+    """"auto" hands the unit back to the detection (next Komga sync); a
+    unit chosen by hand is pinned so the detection never overrides it."""
+    manga = session.get(Manga, manga_id)
+    if manga is not None:
+        if unit == "auto":
+            manga.reading_unit = None
+            manga.reading_unit_pinned = False
+        elif unit in {u.value for u in ReadingUnit}:
+            set_reading_unit(manga, ReadingUnit(unit), pinned=True)
         manga.updated_at = datetime.now(timezone.utc)
         session.add(manga)
         session.commit()

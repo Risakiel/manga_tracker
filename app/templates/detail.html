@@ -51,6 +51,13 @@
                             <option value="pornhwa" {{ "selected" if manga.category.value == "pornhwa" }}>Pornhwa</option>
                         </select>
                     </form>
+                    <form method="post" action="/manga/{{ manga.id }}/reading-unit" class="stat-tile-form" style="margin-top:0.4rem">
+                        <select name="unit" onchange="this.form.requestSubmit()" title="Téléchargé par chapitre ou par volume">
+                            <option value="chapters" {{ "selected" if not manga.is_volumes }}>Chapitres{% if not manga.reading_unit_pinned %} (auto){% endif %}</option>
+                            <option value="volumes" {{ "selected" if manga.is_volumes }}>Volumes{% if not manga.reading_unit_pinned %} (auto){% endif %}</option>
+                            {% if manga.reading_unit_pinned %}<option value="auto">Détection automatique</option>{% endif %}
+                        </select>
+                    </form>
                 </div>
             </div>
             <div class="stat-tile stat-tile-center">
@@ -101,16 +108,16 @@
         <!-- Row 2: chapters/reading + the resync action, bundled into the "Dernière synchro" tile. -->
         <div class="stat-tile-grid">
             <div class="stat-tile stat-tile-center">
-                <div class="stat-tile-label">Chapitres Suwayomi</div>
+                <div class="stat-tile-label">{{ "Volumes" if manga.is_volumes else "Chapitres" }} Suwayomi</div>
                 <div class="stat-tile-center-body">
                     <div class="stat-tile-value stat-tile-value-xl">{{ manga.suwayomi_chapter_count if manga.suwayomi_chapter_count is not none else "?" }}</div>
                 </div>
             </div>
             <div class="stat-tile stat-tile-center">
-                <div class="stat-tile-label">Dernier chapitre retenu</div>
+                <div class="stat-tile-label">{{ "Dernier volume retenu" if manga.is_volumes else "Dernier chapitre retenu" }}</div>
                 <div class="stat-tile-center-body">
                     <div class="stat-tile-value stat-tile-value-xl">{{ manga.authoritative_latest_chapter | int if manga.authoritative_latest_chapter is not none else "?" }}</div>
-                    {% if manga.chapters_behind %}<div class="stat-tile-sub behind-badge">en retard de {{ manga.chapters_behind | int }}</div>{% endif %}
+                    {% if manga.chapters_behind %}<div class="stat-tile-sub behind-badge">en retard de {{ manga.chapters_behind | int }} {{ "volume(s)" if manga.is_volumes else "chapitre(s)" }}</div>{% endif %}
                 </div>
             </div>
             {% if manga.komga_series_id %}
@@ -194,6 +201,8 @@
     </header>
     <p>
         <small>
+            Pour un manga téléchargé par volume, le "dernier volume retenu" vient toujours de MangaUpdates
+            (nombre de volumes de son "Status in Country of Origin", sinon le dernier volume sorti).
             MangaUpdates est la source par défaut pour le "dernier chapitre retenu" ; si elle n'a rien,
             MangaDex prend le relais. AniList sert uniquement à enrichir les métadonnées (couverture, titres
             alternatifs) — son décompte de chapitres n'est fiable que pour une série terminée, il n'est donc
@@ -204,7 +213,7 @@
         <div class="komga-link-row">
             <div class="komga-link-row-meta">
                 <span class="komga-link-row-name">MangaUpdates {% if chapter_source == "mangaupdates" %}⭐{% endif %}</span>
-                <span class="komga-link-row-chapter">Ch. {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "—" }}</span>
+                <span class="komga-link-row-chapter">Ch. {{ manga.mu_latest_chapter | int if manga.mu_latest_chapter is not none else "—" }}{% if manga.mu_latest_volume is not none %} · Vol. {{ manga.mu_latest_volume | int }}{% endif %}</span>
                 {% if chapter_source != "mangaupdates" %}
                 <form method="post" action="/manga/{{ manga.id }}/preferred-chapter-source" class="komga-link-row-star-form">
                     <input type="hidden" name="source" value="mangaupdates">

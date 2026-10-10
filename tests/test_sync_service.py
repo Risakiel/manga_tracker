@@ -3,7 +3,7 @@ import respx
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.config import settings
-from app.models import Category, ChapterSource, Manga, Status
+from app.models import Category, ChapterSource, Manga, ReadingUnit, Status
 from app.services import anilist_client, komga_client, mangadex_client, mangaupdates_client, suwayomi_client
 from app.services.sync_service import (
     apply_identify,
@@ -13,6 +13,7 @@ from app.services.sync_service import (
     sync_all_manga_sources,
     sync_komga_library,
     sync_manga_all_sources,
+    sync_manga_with_mangaupdates,
     sync_suwayomi_library,
 )
 
@@ -178,8 +179,12 @@ def test_suwayomi_sync_reports_unavailable_server(monkeypatch):
     assert result["error"] == "SUWAYOMI_URL is not configured"
 
 
-def _patch_komga(monkeypatch, library_ids, series_by_library, updates=None, scans=None, thumbnails=None, uploads=None):
+def _patch_komga(
+    monkeypatch, library_ids, series_by_library, updates=None, scans=None, thumbnails=None, uploads=None, books=None
+):
     monkeypatch.setattr(komga_client, "list_library_ids", lambda client=None: library_ids)
+    if books is not None:
+        monkeypatch.setattr(komga_client, "fetch_books", lambda series_id, client=None: books.get(series_id, []))
     monkeypatch.setattr(
         komga_client, "fetch_series_thumbnails", lambda series_id, client=None: (thumbnails or {}).get(series_id, [])
     )
@@ -521,6 +526,9 @@ def test_komga_sync_push_goes_through_a_real_authenticated_client(monkeypatch):
         return_value=httpx.Response(204)
     )
     respx.post("http://komga.local:25600/api/v1/libraries/lib-manga/scan").mock(return_value=httpx.Response(202))
+    respx.get("http://komga.local:25600/api/v1/series/series-5/books").mock(
+        return_value=httpx.Response(200, json={"content": [], "last": True})
+    )
 
     result = sync_komga_library(session)
 
@@ -1454,3 +1462,106 @@ def test_komga_sync_does_not_resend_tags_komga_stored_lowercased(monkeypatch):
 
     assert updates == []
     assert result["pushed"] == 0
+
+
+def _volume_series(books_count=17):
+    return komga_client.KomgaSeries(id="series-v", library_id="lib-manga", name="A Fantasy Lazy Life", books_count=books_count)
+
+
+def _fantasy_books():
+    names = ["Chapitre 1", "Chapitre 2", "Chapitre 3"] + [f"Volume {n}" for n in range(4, 18)]
+    return [komga_client.KomgaBook(id=f"b{i}", name=n) for i, n in enumerate(names)]
+
+
+def test_komga_sync_detects_a_volume_based_manga_from_its_book_titles(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(
+            title_en="A Fantasy Lazy Life",
+            server_folder="A Fantasy Lazy Life",
+            suwayomi_chapter_count=17,
+            mu_latest_chapter=85,
+            mu_latest_volume=26,
+        )
+    )
+    session.commit()
+    _patch_komga(
+        monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [_volume_series()]}, books={"series-v": _fantasy_books()}
+    )
+
+    sync_komga_library(session)
+
+    manga = session.exec(select(Manga)).one()
+    assert manga.reading_unit == ReadingUnit.volumes
+    assert not manga.reading_unit_pinned
+    assert manga.authoritative_latest_chapter == 26
+    assert manga.chapters_behind == 9
+
+
+def test_komga_sync_never_overrides_a_unit_set_by_hand(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(
+            title_en="A Fantasy Lazy Life",
+            server_folder="A Fantasy Lazy Life",
+            reading_unit=ReadingUnit.chapters,
+            reading_unit_pinned=True,
+        )
+    )
+    session.commit()
+    _patch_komga(
+        monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [_volume_series()]}, books={"series-v": _fantasy_books()}
+    )
+
+    sync_komga_library(session)
+
+    assert session.exec(select(Manga)).one().reading_unit == ReadingUnit.chapters
+
+
+def test_komga_sync_skips_book_listing_when_unit_known_and_no_new_books(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(
+            title_en="A Fantasy Lazy Life",
+            server_folder="A Fantasy Lazy Life",
+            komga_series_id="series-v",
+            komga_books_count=17,
+            reading_unit=ReadingUnit.volumes,
+        )
+    )
+    session.commit()
+    calls = []
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [_volume_series()]}, books={})
+    monkeypatch.setattr(komga_client, "fetch_books", lambda series_id, client=None: calls.append(series_id) or [])
+
+    sync_komga_library(session)
+
+    assert calls == []
+
+
+@respx.mock
+def test_mangaupdates_sync_falls_back_to_latest_release_volume_for_volume_mangas():
+    session = _session()
+    manga = Manga(
+        title_en="Vol Manga",
+        server_folder="Vol Manga",
+        mangaupdates_url="https://www.mangaupdates.com/series/kljw00c/vol-manga",
+        reading_unit=ReadingUnit.volumes,
+    )
+    session.add(manga)
+    session.commit()
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(
+            200,
+            json={"series_id": 44838842124, "title": "Vol Manga", "status": "", "latest_chapter": 81, "completed": False},
+        )
+    )
+    respx.post("https://api.mangaupdates.com/v1/releases/search").mock(
+        return_value=httpx.Response(200, json={"results": [{"record": {"volume": "20", "chapter": "81"}}]})
+    )
+
+    sync_manga_with_mangaupdates(session, manga)
+
+    assert manga.mu_latest_chapter == 81
+    assert manga.mu_latest_volume == 20
+    assert manga.authoritative_latest_chapter == 20

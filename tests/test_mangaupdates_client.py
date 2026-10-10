@@ -210,3 +210,45 @@ def test_same_series_url_ignores_slug_differences():
         "https://www.mangaupdates.com/series/kljw00c/a", "https://www.mangaupdates.com/series/aaaaaaa/a"
     )
     assert not same_series_url("https://www.mangaupdates.com/series/kljw00c/a", None)
+
+
+@respx.mock
+def test_fetch_series_parses_the_volume_count_from_the_status_text():
+    # Real case: "A Fantasy Lazy Life" (Risou no Himo Seikatsu).
+    payload = dict(SAMPLE_SERIES_PAYLOAD)
+    payload["status"] = "26 Volumes (Ongoing)"
+    payload["latest_chapter"] = 85
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    series = fetch_series(44838842124)
+    assert series.latest_volume == 26
+    assert series.latest_chapter == 85
+
+
+@respx.mock
+def test_fetch_series_has_no_volume_count_when_the_status_gives_chapters_only():
+    respx.get("https://api.mangaupdates.com/v1/series/44838842124").mock(
+        return_value=httpx.Response(200, json=SAMPLE_SERIES_PAYLOAD)
+    )
+    assert fetch_series(44838842124).latest_volume is None
+
+
+@respx.mock
+def test_fetch_latest_release_volume_takes_the_highest_volume():
+    from app.services.mangaupdates_client import fetch_latest_release_volume
+
+    route = respx.post("https://api.mangaupdates.com/v1/releases/search").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"record": {"volume": "20", "chapter": "81"}},
+                    {"record": {"volume": "", "chapter": "85"}},
+                    {"record": {"volume": "18-19", "chapter": "80"}},
+                ]
+            },
+        )
+    )
+    assert fetch_latest_release_volume(44838842124) == 20
+    assert route.calls.last.request.content and b'"search_type":"series"' in route.calls.last.request.content.replace(b" ", b"")

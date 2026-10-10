@@ -104,6 +104,10 @@ class KomgaSeries:
 @dataclass
 class KomgaBook:
     id: str
+    # File-derived name ("Volume 4", "Ch.5") and the metadata title, used
+    # to tell volume-based series from chapter-based ones.
+    name: str = ""
+    title: str = ""
     authors: list[dict] = field(default_factory=list)
     authors_locked: bool = False
 
@@ -249,6 +253,8 @@ def _parse_book(node: dict) -> KomgaBook:
     metadata = node.get("metadata") or {}
     return KomgaBook(
         id=node["id"],
+        name=node.get("name") or "",
+        title=metadata.get("title") or "",
         authors=metadata.get("authors") or [],
         authors_locked=bool(metadata.get("authorsLock")),
     )

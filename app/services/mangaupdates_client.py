@@ -22,6 +22,8 @@ BASE_URL = "https://api.mangaupdates.com/v1"
 # make those links unparseable, so they could never be compared to ours.
 _SLUG_RE = re.compile(r"/series/([0-9a-z]+)(?:[/?#]|$)", re.IGNORECASE)
 _CHAPTER_COUNT_RE = re.compile(r"(\d+)\s*Chapters?", re.IGNORECASE)
+_VOLUME_COUNT_RE = re.compile(r"(\d+)\s*(?:Volumes?|Vols?\.?)(?![a-z])", re.IGNORECASE)
+_RELEASE_VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)")
 
 _last_request_at = 0.0
 
@@ -60,6 +62,9 @@ class MangaUpdatesSeries:
     status_raw: str = ""
     completed: bool = False
     latest_chapter: Optional[float] = None
+    # From the "Status in Country of Origin" text ("26 Volumes (Ongoing)");
+    # None when it gives no volume count (see fetch_latest_release_volume).
+    latest_volume: Optional[float] = None
     description: str = ""
     genres: list[str] = field(default_factory=list)
     authors: list[str] = field(default_factory=list)
@@ -104,6 +109,10 @@ def _parse_series_payload(data: dict) -> MangaUpdatesSeries:
         if counts:
             latest_chapter = max(counts)
 
+    # Same largest-figure rule for volumes, for mangas downloaded by volume.
+    volume_counts = [int(m) for m in _VOLUME_COUNT_RE.findall(status_raw)]
+    latest_volume = max(volume_counts) if volume_counts else None
+
     completed = bool(data.get("completed")) or "complete" in status_raw.lower()
 
     # Prefer the full-resolution cover over the "thumb" variant -- this is
@@ -120,6 +129,7 @@ def _parse_series_payload(data: dict) -> MangaUpdatesSeries:
         status_raw=status_raw,
         completed=completed,
         latest_chapter=latest_chapter,
+        latest_volume=latest_volume,
         description=data.get("description") or "",
         genres=[g["genre"] for g in data.get("genres", []) if g.get("genre")],
         authors=authors,
@@ -138,6 +148,30 @@ def fetch_series(series_id: int, client: Optional[httpx.Client] = None) -> Manga
         resp = client.get(f"{BASE_URL}/series/{series_id}")
         resp.raise_for_status()
         return _parse_series_payload(resp.json())
+    finally:
+        if owns_client:
+            client.close()
+
+
+def fetch_latest_release_volume(series_id: int, client: Optional[httpx.Client] = None) -> Optional[float]:
+    """Highest volume among the series' most recent scanlation releases
+    ("v.20 c.81" -> 20) -- the fallback volume count when the status text
+    has none. Only called for volume-based mangas, never routinely."""
+    _throttle(settings.mangaupdates_min_request_interval_seconds)
+    owns_client = client is None
+    client = client or httpx.Client(timeout=15.0)
+    try:
+        resp = client.post(
+            f"{BASE_URL}/releases/search",
+            json={"search": str(series_id), "search_type": "series", "perpage": 25},
+        )
+        resp.raise_for_status()
+        volumes = []
+        for entry in resp.json().get("results", []):
+            # "volume" can be blank, a single number or a range ("3-4").
+            raw = str((entry.get("record") or {}).get("volume") or "")
+            volumes.extend(float(v) for v in _RELEASE_VOLUME_RE.findall(raw))
+        return max(volumes) if volumes else None
     finally:
         if owns_client:
             client.close()
