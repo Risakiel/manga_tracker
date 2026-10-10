@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Planification de tâches — Manga Tracker{% endblock %}
+{% block page_eyebrow %}<p class="mt-eyebrow">Configuration</p>{% endblock %}
+{% block page_title %}Planification de tâches{% endblock %}
+{% block content %}
+
+<p>
+    Toutes les synchronisations automatiques de l'application. Choisis la fréquence de chaque tâche
+    (enregistrée en base, elle remplace la valeur par défaut des variables d'environnement), suis
+    leur avancement et relance-les à la main si besoin.
+</p>
+
+{% if not scheduler_running %}
+<article style="color:#fbbf24">Le planificateur est désactivé (<code>ENABLE_SCHEDULER=false</code>) : aucune tâche ne se lance automatiquement, seul le lancement manuel fonctionne.</article>
+{% endif %}
+
+{% include "_jobs_table.html" %}
+
+{% endblock %}

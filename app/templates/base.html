@@ -11,7 +11,7 @@
     <script src="/static/js/alpine.min.js?v={{ static_version }}" defer></script>
     <script src="/static/js/modal.js?v={{ static_version }}" defer></script>
 </head>
-{% set admin_paths = ["/config", "/import", "/suwayomi", "/komga", "/server-folders", "/logs"] %}
+{% set admin_paths = ["/config", "/import", "/suwayomi", "/komga", "/server-folders", "/jobs", "/logs"] %}
 {% set in_admin = request.url.path in admin_paths %}
 {% set in_home = request.url.path == "/" or request.url.path.startswith("/manga/") %}
 <body x-data="{ sidebarOpen: false }">
@@ -31,10 +31,10 @@
                 </div>
                 <div class="mt-nav-sub">
                     <a href="/config" class="{{ 'active' if request.url.path == '/config' }}">Vue d'ensemble</a>
-                    <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">📥 Import Excel</a>
                     <a href="/suwayomi" class="{{ 'active' if request.url.path == '/suwayomi' }}">🔗 Suwayomi</a>
                     <a href="/komga" class="{{ 'active' if request.url.path == '/komga' }}">📖 Komga</a>
                     <a href="/server-folders" class="{{ 'active' if request.url.path == '/server-folders' }}">📁 Dossiers serveur</a>
+                    <a href="/jobs" class="{{ 'active' if request.url.path == '/jobs' }}">⏱️ Planification de tâches</a>
                     <a href="/logs" class="{{ 'active' if request.url.path == '/logs' }}">🕒 Historique</a>
                 </div>
             </div>

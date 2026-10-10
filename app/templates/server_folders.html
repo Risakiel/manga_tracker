@@ -24,7 +24,7 @@
 <form method="post" action="/server-folders/sync" style="margin-bottom:0.5rem">
     <button type="submit" class="btn-sync btn-sync-block" {{ "disabled" if progress.running }}>{% include "_sync_icon.html" %}<span>Synchroniser maintenant</span></button>
 </form>
-<p><small>Synchronisation automatique toutes les {{ sync_interval_hours | int }}h (réglable via <code>LIBRARY_SYNC_INTERVAL_HOURS</code>).</small></p>
+<p><small>Synchronisation automatique : {{ sync_interval_label | lower }} (réglable dans <a href="/jobs">Planification de tâches</a>).</small></p>
 {% include "_server_folders_progress.html" %}
 
 {% if mismatches %}

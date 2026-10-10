@@ -1121,3 +1121,34 @@ body {
 .komga-box {
     margin: 0;
 }
+
+/* Planification de tâches */
+.jobs-table-wrap {
+    overflow-x: auto;
+}
+
+.jobs-table td {
+    vertical-align: top;
+}
+
+.jobs-table td:first-child {
+    min-width: 14rem;
+}
+
+.jobs-interval-form {
+    margin: 0;
+}
+
+.jobs-interval-form select {
+    margin-bottom: 0.25rem;
+    min-width: 11rem;
+}
+
+.jobs-table progress {
+    margin-bottom: 0.25rem;
+    min-width: 8rem;
+}
+
+.jobs-table form {
+    margin: 0;
+}
