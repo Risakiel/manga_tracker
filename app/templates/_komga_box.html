@@ -57,6 +57,14 @@
             {% endif %}
         </dd>
 
+        <dt>Couverture</dt>
+        <dd>
+            {% if not manga.cover_url %}<span class="komga-muted">pas de couverture ici</span>
+            {% elif manga.komga_cover_pushed_url != manga.cover_url %}<span class="komga-muted">pas encore envoyée</span>
+            {% elif manga.komga_cover_kept %}<span class="komga-muted">Komga a déjà une couverture choisie à la main, gardée (le bouton "Identifier" la remplace)</span>
+            {% else %}<span class="komga-ok">✓ envoyée à Komga</span>{% endif %}
+        </dd>
+
         <dt>Dernière synchro Komga</dt>
         <dd>{{ manga.komga_synced_at.strftime("%Y-%m-%d %H:%M") if manga.komga_synced_at else "jamais" }}</dd>
     </dl>

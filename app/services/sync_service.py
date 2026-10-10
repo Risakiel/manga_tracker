@@ -450,7 +450,29 @@ def _push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries", cl
     pushed = _send_komga_patch(manga, series.id, patch, _KOMGA_FIELD_LABELS, client)
     if _KOMGA_FIELD_LABELS["links"] in pushed:
         manga.komga_mangaupdates_url = manga.mangaupdates_url
+    if _push_cover_if_komga_has_none(manga, series.id, client):
+        pushed.append("couverture")
     return pushed
+
+
+def _push_cover_if_komga_has_none(manga: Manga, series_id: str, client: httpx.Client) -> bool:
+    """Routine-sync poster push. Komga with no poster of its own shows the
+    first page of the first book (often a blank or text page for webtoons),
+    so our cover is uploaded -- but a poster chosen in Komga (uploaded by
+    hand, or a cover.jpg next to the files) is kept, same non-destructive
+    rule as the other fields. Each cover_url is only handled once."""
+    if not manga.cover_url or manga.komga_cover_pushed_url == manga.cover_url:
+        return False
+    try:
+        thumbnails = komga_client.fetch_series_thumbnails(series_id, client=client)
+    except komga_client.KomgaUnavailable as exc:
+        manga.komga_sync_error = f"Couverture : {exc.reason}"
+        return False
+    if any(t.get("selected") for t in thumbnails):
+        manga.komga_cover_pushed_url = manga.cover_url
+        manga.komga_cover_kept = True
+        return False
+    return push_cover_to_komga(manga, series_id, client=client)
 
 
 def _apply_komga_series(
@@ -509,7 +531,8 @@ def link_manga_to_komga_series(session: Session, manga: Manga, raw_value: str) -
         for attr in (
             "komga_series_id", "komga_books_count", "komga_books_read_count", "komga_series_name",
             "komga_library_name", "komga_folder_path", "komga_mangaupdates_url", "komga_links_locked",
-            "komga_match_method", "komga_synced_at", "komga_sync_error",
+            "komga_match_method", "komga_synced_at", "komga_sync_error", "komga_cover_pushed_url",
+            "komga_cover_kept",
         ):
             setattr(manga, attr, None)
         manga.komga_id_pinned = None
@@ -566,27 +589,40 @@ def force_push_metadata_to_komga(manga: Manga, series: "komga_client.KomgaSeries
     return sent
 
 
+# Some image CDNs answer a bare "python-httpx" user agent with 403.
+_IMAGE_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; MangaTracker)"}
+
+
 def push_cover_to_komga(manga: Manga, series_id: str, client: httpx.Client) -> bool:
     """Downloads the manga's current cover (from whichever source it came
     from -- MangaUpdates/MangaDex/AniList's own CDN, not Komga) and uploads
-    it as the series' new selected thumbnail. Identify-only, same
-    "master copy" reasoning as force_push_metadata_to_komga above."""
+    it as the series' selected poster. Called unconditionally by Identify
+    ("master copy" reasoning, see force_push_metadata_to_komga) and by the
+    routine sync only when Komga has no poster of its own. Failures are
+    recorded on `manga.komga_sync_error` so they show in the Komga box."""
     if not manga.cover_url:
         return False
     try:
-        with httpx.Client(timeout=20.0, follow_redirects=True) as image_client:
+        with httpx.Client(timeout=20.0, follow_redirects=True, headers=_IMAGE_HEADERS) as image_client:
             resp = image_client.get(manga.cover_url)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("could not download cover %s for Komga push: %s", manga.cover_url, exc)
+        manga.komga_sync_error = f"Couverture : téléchargement impossible ({exc})"
         return False
     content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+    if not content_type.startswith("image/"):
+        manga.komga_sync_error = f"Couverture : {manga.cover_url} n'est pas une image ({content_type})"
+        return False
     try:
         komga_client.upload_series_thumbnail(series_id, resp.content, content_type, client=client)
-        return True
     except komga_client.KomgaUnavailable as exc:
         logger.warning("could not upload cover to Komga series %s: %s", series_id, exc)
+        manga.komga_sync_error = f"Couverture refusée par Komga : {exc.reason}"
         return False
+    manga.komga_cover_pushed_url = manga.cover_url
+    manga.komga_cover_kept = False
+    return True
 
 
 _KOMGA_AUTHOR_ROLE = "writer"

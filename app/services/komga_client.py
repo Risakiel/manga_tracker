@@ -293,6 +293,26 @@ def update_book_metadata(book_id: str, patch: dict, client: Optional[httpx.Clien
             client.close()
 
 
+_IMAGE_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+
+
+def fetch_series_thumbnails(series_id: str, client: Optional[httpx.Client] = None) -> list[dict]:
+    """The posters attached to the series itself (type "USER_UPLOADED" or
+    "SIDECAR", one of them "selected"). An empty list means Komga falls
+    back to the first book's page as the series poster."""
+    owns_client = client is None
+    client = client or _client()
+    try:
+        resp = client.get(f"{_base_url()}/api/v1/series/{series_id}/thumbnails")
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as exc:
+        raise KomgaUnavailable(f"could not list Komga posters for series {series_id}: {exc}") from exc
+    finally:
+        if owns_client:
+            client.close()
+
+
 def upload_series_thumbnail(
     series_id: str, content: bytes, content_type: str, client: Optional[httpx.Client] = None
 ) -> None:
@@ -306,7 +326,9 @@ def upload_series_thumbnail(
         resp = client.post(
             f"{_base_url()}/api/v1/series/{series_id}/thumbnails",
             params={"selected": "true"},
-            files={"file": ("cover", content, content_type)},
+            # A real filename extension: Komga stores the upload as-is and
+            # some clients sniff the type from the name.
+            files={"file": (f"cover.{_IMAGE_EXTENSIONS.get(content_type, 'jpg')}", content, content_type)},
         )
         resp.raise_for_status()
     except httpx.HTTPError as exc:
