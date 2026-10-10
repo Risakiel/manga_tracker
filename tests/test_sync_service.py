@@ -178,8 +178,18 @@ def test_suwayomi_sync_reports_unavailable_server(monkeypatch):
     assert result["error"] == "SUWAYOMI_URL is not configured"
 
 
-def _patch_komga(monkeypatch, library_ids, series_by_library, updates=None, scans=None):
+def _patch_komga(monkeypatch, library_ids, series_by_library, updates=None, scans=None, thumbnails=None, uploads=None):
     monkeypatch.setattr(komga_client, "list_library_ids", lambda client=None: library_ids)
+    monkeypatch.setattr(
+        komga_client, "fetch_series_thumbnails", lambda series_id, client=None: (thumbnails or {}).get(series_id, [])
+    )
+    monkeypatch.setattr(
+        komga_client,
+        "upload_series_thumbnail",
+        lambda series_id, content, content_type, client=None: uploads.append((series_id, content, content_type))
+        if uploads is not None
+        else None,
+    )
     monkeypatch.setattr(komga_client, "fetch_series", lambda library_id, client=None: series_by_library[library_id])
     monkeypatch.setattr(
         komga_client,
@@ -1344,3 +1354,82 @@ def test_link_new_komga_series_only_touches_unlinked_series_and_mangas(monkeypat
     # Already-linked series is skipped entirely: no progress refresh, no push.
     assert by_title["Old One"].komga_books_count == 1
     assert [series_id for series_id, _patch in updates] == ["series-fresh"]
+
+
+@respx.mock
+def test_komga_sync_pushes_our_cover_when_komga_has_no_poster(monkeypatch):
+    # The reported bug: covers were only ever sent by "Identifier", never by
+    # the routine sync, so a webtoon kept Komga's first-page fallback.
+    session = _session()
+    session.add(
+        Manga(
+            category=Category.manga,
+            title_en="Erreur de destinataire",
+            server_folder="Erreur de destinataire",
+            cover_url="https://cdn.mangaupdates.com/image/i1.jpg",
+        )
+    )
+    session.commit()
+    respx.get("https://cdn.mangaupdates.com/image/i1.jpg").mock(
+        return_value=httpx.Response(200, content=b"img", headers={"content-type": "image/jpeg"})
+    )
+
+    uploads = []
+    series = komga_client.KomgaSeries(id="0RS17MPWXA9VH", library_id="lib-manga", name="Erreur de destinataire")
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=[], uploads=uploads)
+
+    result = sync_komga_library(session)
+
+    assert result["pushed"] == 1
+    assert uploads == [("0RS17MPWXA9VH", b"img", "image/jpeg")]
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_cover_pushed_url == "https://cdn.mangaupdates.com/image/i1.jpg"
+    assert manga.komga_cover_kept is False
+
+    # Handled once: the next run doesn't upload it again.
+    sync_komga_library(session)
+    assert len(uploads) == 1
+
+
+def test_komga_sync_keeps_a_poster_chosen_in_komga(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(category=Category.manga, title_en="Has Poster", server_folder="Has Poster", cover_url="https://x/c.jpg")
+    )
+    session.commit()
+
+    uploads = []
+    series = komga_client.KomgaSeries(id="series-30", library_id="lib-manga", name="Has Poster")
+    _patch_komga(
+        monkeypatch,
+        {Category.manga: "lib-manga"},
+        {"lib-manga": [series]},
+        updates=[],
+        uploads=uploads,
+        thumbnails={"series-30": [{"id": "t1", "type": "SIDECAR", "selected": True}]},
+    )
+
+    sync_komga_library(session)
+
+    assert uploads == []
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_cover_kept is True
+
+
+@respx.mock
+def test_cover_download_failure_is_shown_in_the_komga_box(monkeypatch):
+    session = _session()
+    session.add(
+        Manga(category=Category.manga, title_en="Blocked", server_folder="Blocked", cover_url="https://cdn.example/c.jpg")
+    )
+    session.commit()
+    respx.get("https://cdn.example/c.jpg").mock(return_value=httpx.Response(403))
+
+    series = komga_client.KomgaSeries(id="series-31", library_id="lib-manga", name="Blocked")
+    _patch_komga(monkeypatch, {Category.manga: "lib-manga"}, {"lib-manga": [series]}, updates=[], uploads=[])
+
+    sync_komga_library(session)
+
+    manga = session.exec(select(Manga)).one()
+    assert manga.komga_sync_error.startswith("Couverture : téléchargement impossible")
+    assert manga.komga_cover_pushed_url is None

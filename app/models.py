@@ -114,6 +114,12 @@ class Manga(SQLModel, table=True):
     komga_id_pinned: Optional[bool] = None
     komga_synced_at: Optional[datetime] = None
     komga_sync_error: Optional[str] = Field(default=None, sa_column=Column(Text))
+    # The cover_url last sent to Komga as the series poster (or deliberately
+    # not sent because Komga already had a poster chosen by hand) -- lets the
+    # routine sync skip the poster check once it's been handled, and re-run
+    # it when our cover changes.
+    komga_cover_pushed_url: Optional[str] = None
+    komga_cover_kept: Optional[bool] = None
 
     author: str = ""
     artist: str = ""
